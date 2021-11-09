@@ -258,12 +258,15 @@ class SpectrumSet:
 
 
     
-    def system_properties(self, k_s,M_star):
+    def system_properties(self, k_s,M_star,M_planet=.0001):
         '''M_star is stellar mass in solar masses
-        k_s is stellar velocity amplitude in km/s'''
+        k_s is stellar velocity amplitude in km/s
+        M_planet is planet mass in Jupiter masses'''
         self.k_s=k_s
         self.M_star=M_star
         self.M_cgs=M_star*Ms
+        self.M_planet=M_planet
+        self.M_planet_cgs=M_planet*Mj
 
 
         
@@ -316,18 +319,18 @@ class CCFMatrix():
             pars2use[2]=maxkp
             pars2use[0:2]=orbitalpars[0:2]
         else:
-            print(orbitalpars)
+            #print(orbitalpars)
             pars2use=orbitalpars.copy()
-            maxvtheory=getorbitpars(m_s=spectrumset.M_star,period=orbitalpars[1])['v_p']#np.pi*2*orbitalpars[2]*constants.au.value/(orbitalpars[1]*sec_in_day)*1e-3
-            print(maxkp,maxvtheory)
+            maxvtheory=getorbitpars(m_s=spectrumset.M_star,period=orbitalpars[1],m_p=spectrumset.M_planet)['v_p']#np.pi*2*orbitalpars[2]*constants.au.value/(orbitalpars[1]*sec_in_day)*1e-3
+            #print(maxkp,maxvtheory)
             pars2use[2]=maxkp/maxvtheory.value*orbitalpars[2]
-            print(pars2use)
+            #print(pars2use)
         maxplanetrvs=np.array([planetrvshift(date,pars2use,day0=self.day0,code=code) for date in spectrumset.hjd])
         
         for date in spectrumset.hjd:
             #starrvs.append(stellarrvshift(date,orbitalpars,day0=self.day0,code=code))
             starrvs=maxplanetrvs
-        print(maxplanetrvs)
+        #print(maxplanetrvs)
     
     
         if self.method=='weighted':
@@ -480,14 +483,31 @@ class CCFMatrix():
         sig2arr=[]    
         s2ns=[]
         meds=[]
-    
+        maxkp=np.max(self.velocities)
     
         l_good=len(spectrumset.hjd)
     
         starrvs=[]
+        
+        if code=='sin'or code=='sine':
+            pars2use=np.zeros(3)
+            pars2use[2]=maxkp
+            pars2use[0:2]=orbitalpars[0:2]
+        else:
+            #print(orbitalpars)
+            pars2use=orbitalpars.copy()
+            maxvtheory=getorbitpars(m_s=spectrumset.M_star,period=orbitalpars[1],m_p=spectrumset.M_planet)['v_p']#np.pi*2*orbitalpars[2]*constants.au.value/(orbitalpars[1]*sec_in_day)*1e-3
+            #print(maxkp,maxvtheory)
+            pars2use[2]=maxkp/maxvtheory.value*orbitalpars[2]
+            #print(pars2use)
+        maxplanetrvs=np.array([planetrvshift(date,pars2use,day0=self.day0,code=code) for date in spectrumset.hjd])
+        
         for date in spectrumset.hjd:
-            starrvs.append(stellarrvshift(date,orbitalpars,day0=self.day0,code=code))
+            #starrvs.append(stellarrvshift(date,orbitalpars,day0=self.day0,code=code))
+            starrvs=maxplanetrvs
+        #print(maxplanetrvs)    
     
+
     
         if self.method=='weighted':
             i=0
@@ -544,6 +564,7 @@ class CCFMatrix():
                 #angular momentum is conserved and seperation is the same so M_p*v_p=-M_star*v_star
                 #v_p=-p/m_p
                 v_p=-starrv*massratio
+                v_p=maxplanetrvs[i]*vtemp/maxkp
                 #velocity of planet in km/s
     
                 nf_1, wl_1 = pyasl.dopplerShift(spectrumset.wls*10000, flux, -v_p, edgeHandling='firstlast', fillValue=None)

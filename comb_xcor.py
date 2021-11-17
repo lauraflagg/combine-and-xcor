@@ -147,6 +147,7 @@ class SpectrumSet:
             temp2=np.transpose(temp.values)
             hjdall=temp2[1]
         
+        
 
         if badphases!=[]:
             i=0
@@ -253,6 +254,8 @@ class SpectrumSet:
         self.badwls=badwls
         self.fl_co=fl_co
         self.gooddata=gooddat
+        self.phases=((self.hjd-day0)/period) % 1.0 
+        self.phases[self.phases>.5]=self.phases[self.phases>.5]-1.
         #good data
 
 
@@ -266,8 +269,8 @@ class SpectrumSet:
             datplot=self.gooddat
         fig=plt.figure(figsize=(8,5))
         axarr = fig.add_subplot(1,1,1)        
-        x=axarr.contourf(wlplot,self.hjd,datplot)
-        axarr.set_ylabel('date (mjd)')
+        x=axarr.contourf(wlplot,self.phases,datplot)
+        axarr.set_ylabel('phase')
         axarr.set_xlabel('wavelength (microns)')
         temp=fig.colorbar(x)
         
@@ -723,9 +726,7 @@ class CCFMatrix():
     
     def plotccfvsphase(self,spectrumset, orbitalpars,rv_lim=100,levels=10,cm='viridis',kp_val=None,showplot=True,lcolor='white',lalpha=0.5,phasestart=0,phaseend=0,day0=2453367.8,code='vcurve',per='3.',vsys=0.):
 
-        phases=np.array([((date-day0)/per) % 1.0 for date in spectrumset.hjd])
-        
-        phases[phases<.5]=phases[phases<.5]+1.0
+        phases=spectrumset.phases
         #print(phases)
         fig=plt.figure(figsize=(8,5))
         axarr = fig.add_subplot(1,1,1)       
@@ -737,7 +738,7 @@ class CCFMatrix():
             temp.ax.set_ylabel(r'$\chi^{2}$')        
         if kp_val!=None:
             massratio=kp_val/spectrumset.k_s
-            rvshift=np.array([stellarrvshift(date,orbitalpars,day0=day0,code=code)*-massratio+vsys for date in spectrumset.hjd])
+            rvshift=np.array([planetrvshift(date,orbitalpars,day0=day0,code=code)+vsys for date in spectrumset.hjd])
 
             axarr.plot(rvshift[phases<phasestart],phases[phases<phasestart],color=lcolor,alpha=lalpha,lw=2,zorder=40)
             axarr.plot(rvshift[phases>phaseend],phases[phases>phaseend],color=lcolor,alpha=lalpha)

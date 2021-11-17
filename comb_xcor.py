@@ -256,6 +256,23 @@ class SpectrumSet:
         #good data
 
 
+    def plotspecs(self,wlrange=None):
+        if wlrange!=None:
+            loc=((self.wls>=wlrange[0]) & (self.wls<=wlrange[1]))
+            wlplot=self.wls[loc]
+            datplot=self.gooddata[:,loc]
+        else:
+            wlplot=self.wls
+            datplot=self.gooddat
+        fig=plt.figure(figsize=(8,5))
+        axarr = fig.add_subplot(1,1,1)        
+        x=axarr.contourf(wlplot,self.hjd,datplot)
+        axarr.set_ylabel('date (mjd)')
+        axarr.set_xlabel('wavelength (microns)')
+        temp=fig.colorbar(x)
+        
+        temp.ax.set_ylabel(r'relative flux')            
+
 
     
     def system_properties(self, k_s,M_star,M_planet=.0001):
@@ -686,6 +703,23 @@ class CCFMatrix():
         f = open(self.ccf_filename,'rb') 
         self.rvs,self.velocities,self.ccarr,self.low,self.up,self.method,self.order,self.disp=pickle.load(f)
         f.close()        
+    
+    def plotcoaddmatrix(self,wlrange=None):
+        if wlrange!=None:
+            loc=((self.wls>=wlrange[0]) & (self.wls<=wlrange[1]))
+            wlplot=self.wls[loc]
+            coaddplot=self.coadds[:,loc]
+        else:
+            wlplot=self.wls
+            coaddplot=self.coadds
+        fig=plt.figure(figsize=(8,5))
+        axarr = fig.add_subplot(1,1,1)        
+        x=axarr.contourf(wlplot,self.velocities,coaddplot)
+        axarr.set_ylabel('k$_p$ (km/s)')
+        axarr.set_xlabel('wavelength (microns)')
+        temp=fig.colorbar(x)
+        temp.ax.set_ylabel(r'relative flux')        
+   
     
     def plotccfvsphase(self,spectrumset, orbitalpars,rv_lim=100,levels=10,cm='viridis',kp_val=None,showplot=True,lcolor='white',lalpha=0.5,phasestart=0,phaseend=0,day0=2453367.8,code='vcurve',per='3.',vsys=0.):
 

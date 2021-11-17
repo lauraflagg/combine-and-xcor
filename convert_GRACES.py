@@ -113,15 +113,6 @@ def convert_GRACES(per,day0,td_days,filestart='graces',fileend='.npz',sigcut=Non
 
 
 
-    # In[ ]:
-
-
-
-
-
-    # In[14]:
-
-
     dats_fl0=10.**(np.array(dats_m)/-2.5)
     dats_w=np.array(dats_w)
     dats_u=np.array(dats_e)

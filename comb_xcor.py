@@ -13,6 +13,7 @@ import pandas as pd
 import pickle
 import time
 import astro_lf
+import radvel_rv
 
 from matplotlib import patches
 import matplotlib.colors as mpl
@@ -62,7 +63,7 @@ def stellarrvshift(hhjd,par,day0,code='vcurve'):
     return shift
 
 def planetrvshift(hhjd,par,day0,code='vcurve'):
-    '''code = vcurve or sin or doublesin
+    '''code = vcurve or sin or doublesin or radvel
     if code is vcurve, par has 6 items: center of mass velocity, period, asini in GM, eccentricity, argument of periastron, and phase offset
     if code is sin then par has 4 items, A*sin(freq*(t-t0))
     par is orbital parameters'''
@@ -76,8 +77,8 @@ def planetrvshift(hhjd,par,day0,code='vcurve'):
         shift=shift_ms/1000.
     elif code=='sin'or code=='sine':
         shift=par[2]*np.sin(par[0]*(hhjd-par[1]))
-    
-    
+    elif code=='radvel':
+        shift=radvel_rv.rv_drive(np.array([hhjd]),par)
     return shift    
 
 
@@ -259,7 +260,8 @@ class SpectrumSet:
         #good data
 
 
-    def plotspecs(self,wlrange=None):
+    def plotspecs(self,wlrange=None,orbitalpars=None,centwl=None,code='vcurve',vsys=0,lcolor='white'):
+        
         if wlrange!=None:
             loc=((self.wls>=wlrange[0]) & (self.wls<=wlrange[1]))
             wlplot=self.wls[loc]
@@ -270,11 +272,25 @@ class SpectrumSet:
         fig=plt.figure(figsize=(8,5))
         axarr = fig.add_subplot(1,1,1)        
         x=axarr.contourf(wlplot,self.phases,datplot)
+        
+        if centwl!=None:
+            rvshifts=np.array([planetrvshift(date,orbitalpars,day0=self.day0,code=code)+vsys for date in self.hjd])
+            wlline=astro_lf.veltodeltawl(rvshifts,centwl)+centwl
+
+            axarr.plot(wlline,self.phases,color=lcolor,lw=2,zorder=40)
+        
+        
         axarr.set_ylabel('phase')
         axarr.set_xlabel('wavelength (microns)')
         temp=fig.colorbar(x)
         
-        temp.ax.set_ylabel(r'relative flux')            
+        temp.ax.set_ylabel(r'relative flux')
+        
+    def maskwavelengths(self,wlcent,wlwid):
+        '''wlcent, wlwid in microns'''
+        loc=((self.wls<=(wlcent+wlwid)) & (self.wls>=(wlcent-wlwid)))
+        self.fl_co[loc]=0.
+        self.gooddata[:,loc]=0.
 
 
     
@@ -513,6 +529,10 @@ class CCFMatrix():
             pars2use=np.zeros(3)
             pars2use[2]=maxkp
             pars2use[0:2]=orbitalpars[0:2]
+        elif code=='radvel':
+            pars2use=np.zeros(5)
+            pars2use[4]=maxkp
+            pars2use[0:4]=orbitalpars[0:4]        
         else:
             #print(orbitalpars)
             pars2use=orbitalpars.copy()

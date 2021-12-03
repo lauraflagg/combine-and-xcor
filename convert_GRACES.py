@@ -21,7 +21,7 @@ sys.path.append('../../toimport')
 # In[11]:
 
 
-from astro_lf import createwlscale
+from astro_lf import createwlscale, coadd_echelle
 
 
 # In[12]:
@@ -78,6 +78,7 @@ def convert_GRACES(per,day0,td_days,filestart='graces',fileend='.npz',sigcut=Non
     ls=len(filestart)
     le=len(fileend)
     files=os.listdir('../data/processed/orders/')
+    
     #print(files)
 
     dats_w=[]
@@ -144,13 +145,18 @@ def convert_GRACES(per,day0,td_days,filestart='graces',fileend='.npz',sigcut=Non
 
 
 
-    l=dats_fl.shape[0]
+    norders=dats_fl.shape[0]
+    ndates=dats_fl.shape[1]
 
-    fl_out=np.zeros((dats_fl.shape[1],len(wls)))
-    for i in range(l):
+    
+
+    fl_out=np.zeros((ndates,len(wls)))
+    
+    for i in range(ndates): #for all frames
+        fl_out[i,:],u_out=coadd_echelle(dats_w[:,i,:],dats_fl[:,i,:],dats_u[:,i,:],wls_a)
         #print(dats_w[i,:,:].shape)
-        f0=spectres.spectres(wls_a,dats_w[i,0,:],dats_fl[i,:,:],fill=0,verbose=False)
-        fl_out[np.where(f0!=0)]=f0[np.where(f0!=0)]
+   #     f0=spectres.spectres(wls_a,dats_w[i,0,:],dats_fl[i,:,:],fill=0,verbose=False)
+   #     fl_out[np.where(f0!=0)]=f0[np.where(f0!=0)]
 
 
     # In[31]:

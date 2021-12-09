@@ -80,7 +80,8 @@ def convert_GRACES(per,day0,td_days,filestart='graces',fileend='.npz',sigcut=Non
     files=os.listdir('../data/processed/orders/')
     
     #print(files)
-
+    orders=list(orders)
+    orders.append(10000)
     dats_w=[]
     dats_m=[]
     dats_e=[]
@@ -93,7 +94,7 @@ def convert_GRACES(per,day0,td_days,filestart='graces',fileend='.npz',sigcut=Non
             order=int(test)
         else:
             order=10000
-        if item[-le:]==fileend and item[:ls]==filestart:# and order in orders:
+        if item[-le:]==fileend and item[:ls]==filestart and order in orders:
             data = np.load('../data/processed/orders/'+item)
             l=data['wave'].shape[1]
             #print(l)
@@ -112,9 +113,9 @@ def convert_GRACES(per,day0,td_days,filestart='graces',fileend='.npz',sigcut=Non
             dats_e.append(data['error'][:,start:(start+minlen)])
             dats_m.append(data['sysr'][:,start:(start+minlen)])
 
-
-
-    dats_fl0=10.**(np.array(dats_m)/-2.5)
+    
+    dats_ma=np.array(dats_m)
+    dats_fl0=10.**(dats_ma/-2.5)
     dats_w=np.array(dats_w)
     dats_u=np.array(dats_e)
 

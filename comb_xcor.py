@@ -253,8 +253,8 @@ class SpectrumSet:
         plot=1
         self.hjd=hjd
         self.badwls=badwls
-        self.fl_co=fl_co
-        self.gooddata=gooddat
+        self.fl_co=np.ma.masked_equal(fl_co,0)
+        self.gooddata=np.ma.masked_equal(gooddat,0)
         self.phases=((self.hjd-day0)/period) % 1.0 
         self.phases[self.phases>.5]=self.phases[self.phases>.5]-1.
         #good data
@@ -289,8 +289,8 @@ class SpectrumSet:
     def maskwavelengths(self,wlcent,wlwid):
         '''wlcent, wlwid in microns'''
         loc=((self.wls<=(wlcent+wlwid)) & (self.wls>=(wlcent-wlwid)))
-        self.fl_co[loc]=0.
-        self.gooddata[:,loc]=0.
+        self.fl_co=np.ma.masked_where(loc,self.fl_co)
+        self.gooddata=np.ma.masked_where(loc,self.goodata)
 
 
     

@@ -1,6 +1,6 @@
 import sys
 sys.path.append('C:/Users/laura/programming/python/toimport')
-from stats_lf import xcor, chisq, log_likelihood_zucker, gaussian2D
+from stats_lf import xcor, xcor_fast, chisq, log_likelihood_zucker, gaussian2D
 import numpy as np
 from astro_lf import findbests2n, vel2wl, c_kms,wl2vel,veltodeltawl, getorbitpars
 from readwrite_lf import read2cols
@@ -258,9 +258,19 @@ class SpectrumSet:
         self.phases=((self.hjd-day0)/period) % 1.0 
         self.phases[self.phases>.5]=self.phases[self.phases>.5]-1.
         #good data
+    
+    def filtertemplate(self,flip=False,butter=False,resample=1):
+        '''resample is the ratio between the old resolution and the new resolution'''
+        if flip:
+            self.fl_co=-self.fl_co
+        if butter:
+            None
+        
 
-
-    def plotspecs(self,wlrange=None,orbitalpars=None,centwl=None,code='vcurve',vsys=0,lcolor='white'):
+    def plotspecs(self,wlrange=None,orbitalpars=None,centwl=None,code='vcurve',vsys=0,lcolor='white',nontransitingphases=False):
+        
+        if nontransitingphases:
+            self.phases[self.phases<0]=self.phases[self.phases<0]+1
         
         if wlrange!=None:
             loc=((self.wls>=wlrange[0]) & (self.wls<=wlrange[1]))
@@ -290,8 +300,9 @@ class SpectrumSet:
         '''wlcent, wlwid in microns'''
         loc=((self.wls<=(wlcent+wlwid)) & (self.wls>=(wlcent-wlwid)))
         self.fl_co=np.ma.masked_where(loc,self.fl_co)
-        self.gooddata=np.ma.masked_where(loc,self.goodata)
-
+        self.gooddata[:,loc]=0.
+        self.gooddata=np.ma.masked_equal(self.gooddata,0)
+        
 
     
     def system_properties(self, k_s,M_star,M_planet=.0001):
@@ -727,7 +738,8 @@ class CCFMatrix():
         self.rvs,self.velocities,self.ccarr,self.low,self.up,self.method,self.order,self.disp=pickle.load(f)
         f.close()        
     
-    def plotcoaddmatrix(self,wlrange=None):
+    def plotcoaddmatrix(self,wlrange=None,wl_line=None,vsys=None,kp_lim=None,kp_line=None):
+        '''wl_line in microns'''
         if wlrange!=None:
             loc=((self.wls>=wlrange[0]) & (self.wls<=wlrange[1]))
             wlplot=self.wls[loc]
@@ -735,13 +747,23 @@ class CCFMatrix():
         else:
             wlplot=self.wls
             coaddplot=self.coadds
+
         fig=plt.figure(figsize=(8,5))
         axarr = fig.add_subplot(1,1,1)        
         x=axarr.contourf(wlplot,self.velocities,coaddplot)
         axarr.set_ylabel('k$_p$ (km/s)')
         axarr.set_xlabel('wavelength (microns)')
         temp=fig.colorbar(x)
-        temp.ax.set_ylabel(r'relative flux')        
+        temp.ax.set_ylabel(r'relative flux')
+        if wl_line!=None:
+            w=wl_line+veltodeltawl(vsys,wl_line*1e4)*1e-4
+            axarr.axvline(w,ymin=-1000,ymax=1000,color='white',linestyle='--',zorder=20,alpha=.5)
+        if kp_line!=None:
+            axarr.axhline(kp_line,xmin=np.min(self.rvs)-1,xmax=np.max(self.rvs)+1,color='white',linestyle='--',alpha=.5)        
+        if kp_lim==None:
+            plt.ylim(0,np.max(self.velocities))
+        else:
+            plt.ylim(0,kp_lim)
    
     
     def plotccfvsphase(self,spectrumset, orbitalpars,rv_lim=100,levels=10,cm='viridis',kp_val=None,showplot=True,lcolor='white',lalpha=0.5,phasestart=0,phaseend=0,day0=2453367.8,code='vcurve',per='3.',vsys=0.):
@@ -752,7 +774,7 @@ class CCFMatrix():
         axarr = fig.add_subplot(1,1,1)       
         x=axarr.contourf(np.round(self.rvs,1),phases,self.ccvsphase,levels,cmap=cm,zorder=0)
         temp=fig.colorbar(x)
-        if self.func==xcor:
+        if self.func==xcor or self.func==xcor_fast:
             temp.ax.set_ylabel(r'CCF height')
         else:
             temp.ax.set_ylabel(r'$\chi^{2}$')        
@@ -825,7 +847,7 @@ class CCFMatrix():
         axarr.set_ylabel(r'planet velocity (km s$^{-1}$)',fontsize=16)
         axarr.set_ylim(np.min(self.velocities),np.max(self.velocities))
         temp=fig.colorbar(x)
-        if self.func==xcor:
+        if self.func==xcor or self.func==xcor_fast:
             temp.ax.set_ylabel(r'CCF height')
         else:
             temp.ax.set_ylabel(r'$\chi^{2}$')

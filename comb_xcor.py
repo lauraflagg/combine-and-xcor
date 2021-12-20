@@ -747,6 +747,8 @@ class CCFMatrix():
         else:
             wlplot=self.wls
             coaddplot=self.coadds
+        print('mean=',np.mean(coaddplot),' sd=',np.std(coaddplot))
+        print('min=',np.min(coaddplot),' max=',np.max(coaddplot))
 
         fig=plt.figure(figsize=(8,5))
         axarr = fig.add_subplot(1,1,1)        

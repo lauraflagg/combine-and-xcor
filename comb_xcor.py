@@ -14,6 +14,7 @@ import pickle
 import time
 import astro_lf
 import radvel_rv
+from astropy.io import fits
 
 from matplotlib import patches
 import matplotlib.colors as mpl
@@ -102,7 +103,33 @@ class SpectrumSet:
             
             wls=data1[:][0]
         self.wls=wls.astype(np.float)     
+
+    def _read_template_(self):
+        if self.template_fn[-4:]=='fits':
+            '''mantis templatess'''
+            with fits.open(self.template_fn) as f:
+                f0=f[0].data
+            f1=f0[1]
+            fl=f1[::-1]
+            wn=np.arange(len(f0[1]))*0.01+4000
+            wl=10000./wn[::-1]*1e4
+        else:
+            df=pd.read_csv(self.template_fn)
+            data_df=np.transpose(df.values)
+            wl=data_df[0]
+            fl=data_df[1]
+            
+        if self.template_wl_unit!=None:
+            self.template_wl_unit=astro_lf.find_unit(template_wl_unit)
+        else:
+            self.template_wl_unit=astro_lf.guess_unit(wl[0])
+        
+        conversion_fac=astro_lf.wl_unit_choices[self.template_wl_unit].conversion/astro_lf.wl_unit_choices[self.spectrum_wl_unit].conversion
+        wl_co_temp_0=wl*conversion_fac
+
+        return wl_co_temp_0,fl
     
+
     def __init__(self,filename,folder,bad_dates=None,maskfile=None,template_fn='template_width0p2_CO.csv',subset='',badphases=[],
                  period=8.9891, scale=1.,day0=2453367.805,template_wl_unit=None,spectrum_wl_unit=None,wllims=[0.0,1e20],subtractone=True,transit_midpoint=None,tp=None,printphases=False):
         #only need to worry abot day0, period if badphases!=[]
@@ -120,6 +147,7 @@ class SpectrumSet:
         self.day0=day0
         self.ccarrs=[]
         self.loc=folder+filename
+        self.template_wl_unit=template_wl_unit
         self.wllims=wllims
         self._read_flux_()
         if tp==None:
@@ -222,18 +250,8 @@ class SpectrumSet:
 
         #read in template file
 
-        df=pd.read_csv(template_fn)
-        data_df=np.transpose(df.values)
+        wl_co_temp_0, fl_co_temp=self._read_template_()
         
-        if template_wl_unit!=None:
-            self.template_wl_unit=astro_lf.find_unit(template_wl_unit)
-        else:
-            self.template_wl_unit=astro_lf.guess_unit(data_df[0][0])
-        
-        conversion_fac=astro_lf.wl_unit_choices[self.template_wl_unit].conversion/astro_lf.wl_unit_choices[self.spectrum_wl_unit].conversion
-        wl_co_temp_0=data_df[0]*conversion_fac
-
-        fl_co_temp=data_df[1]
         ccarr=[]
         cc2arr=[]
         sigarr=[]

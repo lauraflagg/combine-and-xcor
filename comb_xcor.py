@@ -283,7 +283,24 @@ class SpectrumSet:
             self.fl_co=-self.fl_co
         if butter:
             None
+            
+    def plottemplate(self,wlrange=None):
+
+        if wlrange!=None:
+            loc=((self.wls>=wlrange[0]) & (self.wls<=wlrange[1]))
+            wlplot=self.wls[loc]
+            datplot=self.fl_co[:,loc]
+        else:
+            wlplot=self.wls
+            datplot=self.fl_co
+        fig=plt.figure(figsize=(8,5))
+        axarr = fig.add_subplot(1,1,1)        
+        x=axarr.plot(wlplot,datplot)
+      
         
+        axarr.set_ylabel('flux')
+        axarr.set_xlabel('wavelength (microns)')
+    
 
     def plotspecs(self,wlrange=None,orbitalpars=None,centwl=None,code='vcurve',vsys=0,lcolor='white',nontransitingphases=False):
         
@@ -296,7 +313,7 @@ class SpectrumSet:
             datplot=self.gooddata[:,loc]
         else:
             wlplot=self.wls
-            datplot=self.gooddat
+            datplot=self.gooddata
         fig=plt.figure(figsize=(8,5))
         axarr = fig.add_subplot(1,1,1)        
         x=axarr.contourf(wlplot,self.phases,datplot)
@@ -815,6 +832,7 @@ class CCFMatrix():
         return fig,axarr        
             
     def findcenter(self,xguess,yguess,xlims=None,ylims=None,xcenlims=None,ycenlims=None,negamp=False):
+        '''def findcenter(self,xguess,yguess,xlims=None,ylims=None,xcenlims=None,ycenlims=None,negamp=False)'''
         if xlims!=None:
             yesrv=np.where((self.rvs<=xlims[1]) & (self.rvs>=xlims[0]))
         else:

@@ -35,7 +35,15 @@ Mj=1.8986*10.0**30
 
 class SpectrumSet:
     def _read_flux_(self):
-        if self.filename[-3:]=='pic':
+        if self.filename[-8:]=='dict.pic':
+            self.byorder=True
+            ob = open(self.loc, "rb")
+            dat=pickle.load(ob)
+            self.dates=dat['dates'].astype(np.float)
+            self.data=dat['fluxes']
+            wls=dat['wls']        
+        
+        elif self.filename[-3:]=='pic':
             ob = open(self.loc, "rb")
             d,dat0=pickle.load(ob)
             dat=dat0.transpose()
@@ -72,7 +80,7 @@ class SpectrumSet:
         if self.template_wl_unit!=None:
             self.template_wl_unit=astro_lf.find_unit(template_wl_unit)
         else:
-            self.template_wl_unit=astro_lf.guess_unit(wl[0])
+            self.template_wl_unit=astro_lf.guess_unit(wl.flatten()[0])
         
         conversion_fac=astro_lf.wl_unit_choices[self.template_wl_unit].conversion/astro_lf.wl_unit_choices[self.spectrum_wl_unit].conversion
         wl_co_temp_0=wl*conversion_fac
@@ -84,6 +92,7 @@ class SpectrumSet:
                  period=8.9891, scale=1.,day0=2453367.805,template_wl_unit=None,spectrum_wl_unit=None,wllims=[0.0,1e20],subtractone=True,transit_midpoint=None,tp=None,printphases=False):
         #only need to worry abot day0, period if badphases!=[]
         #subbtractone added to deal with transmission spectra
+        self.byorder=False
         self.idnum=filename[-12:-4]
         self.filename=filename
         self.folder=folder
@@ -115,7 +124,7 @@ class SpectrumSet:
         if spectrum_wl_unit!=None:
             self.spectrum_wl_unit=astro_lf.find_unit(spectrum_wl_unit)
         else:
-            self.spectrum_wl_unit=astro_lf.guess_unit(self.wls[0])
+            self.spectrum_wl_unit=astro_lf.guess_unit(self.wls.flatten()[0])
         
 
         if bad_dates==None:
@@ -181,16 +190,24 @@ class SpectrumSet:
 
 
         badwls=np.array([])
-        starts,ends=read2cols(maskfile)
-        for s,e in zip(starts,ends):
-            arr=np.where((self.wls>s) & (self.wls<=e))
-            badwls=np.append(badwls,arr)
-        arr=np.where(self.wls<self.wllims[0])
-        badwls=np.append(badwls,arr)
-        arr=np.where(self.wls>self.wllims[1])
-        badwls=np.append(badwls,arr)        
+        badwls_mask=np.zeros_like(self.wls)
+        if maskfile!=None:
+            starts,ends=read2cols(maskfile)
+            for s,e in zip(starts,ends):
+                arr=np.where((self.wls>s) & (self.wls<=e))
 
-        badwls=badwls.astype(np.int)    
+                badwls=np.append(badwls,arr)
+                badwls_mask[arr]=1
+            arr=np.where(self.wls<self.wllims[0])
+            badwls=np.append(badwls,arr)
+            badwls_mask[arr]=1
+            arr=np.where(self.wls>self.wllims[1])
+            badwls=np.append(badwls,arr)        
+            badwls_mask[arr]=1
+            badwls=badwls.astype(np.int)
+
+        else:
+            badwls=[]
 
 
         gooddat=self.data[goodlocs]
@@ -209,13 +226,24 @@ class SpectrumSet:
         
         logging.debug('wl_template:',wl_co_temp_0[0:10],wl_co_temp_0[-10:])
         logging.debug('wls:',self.wls[0:10],self.wls[-10:])
-        if subtractone:
-            fl_co=spectres.spectres(self.wls, wl_co_temp_0, fl_co_temp,verbose=False,fill=1.)-1.0
+        if self.byorder:
+            fl_co=np.zeros_like(self.wls)
+            for o, o_w in enumerate(self.wls):
+                if subtractone:
+                    fl_co[o]=spectres.spectres(o_w, wl_co_temp_0, fl_co_temp,verbose=False,fill=1.)-1.0
+                else:
+                    fl_co[o]=spectres.spectres(o_w, wl_co_temp_0, fl_co_temp,verbose=False)
         else:
-            fl_co=spectres.spectres(self.wls, wl_co_temp_0, fl_co_temp,verbose=False)
         
+            if subtractone:
+                fl_co=spectres.spectres(self.wls, wl_co_temp_0, fl_co_temp,verbose=False,fill=1.)-1.0
+            else:
+                fl_co=spectres.spectres(self.wls, wl_co_temp_0, fl_co_temp,verbose=False)
         
-        fl_co[badwls]=0
+        if self.byorder:
+            fl_co[badwls_mask==1]=0
+        else:
+            fl_co[badwls]=0
         fl_co=fl_co*scale
 
         plot=1

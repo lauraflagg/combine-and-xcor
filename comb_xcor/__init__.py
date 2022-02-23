@@ -33,5 +33,6 @@ logging.basicConfig(level=logging.INFO,filename=logfile)
 Ms=1.989*10.0**33
 Mj=1.8986*10.0**30
 
-from comb_xcor.SpectrumSet import SpectrumSet 
+from comb_xcor.spectrumset import SpectrumSet 
 from comb_xcor.ccfmatrix import CCFMatrix
+from comb_xcor.ccfmatrix import planetrvshift

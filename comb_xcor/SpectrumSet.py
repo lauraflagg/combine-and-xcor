@@ -27,6 +27,9 @@ logfile='debug_log.txt'
 logging.basicConfig(level=logging.INFO,filename=logfile)
 #logging.basicConfig(level=logging.DEBUG,filename=logfile)
 
+from comb_xcor.ccfmatrix import planetrvshift
+
+
 
 '''encorporates _upgrade'''
 
@@ -89,7 +92,8 @@ class SpectrumSet:
     
 
     def __init__(self,filename,folder,bad_dates=None,maskfile=None,template_fn='template_width0p2_CO.csv',subset='',badphases=[],
-                 period=8.9891, scale=1.,day0=2453367.805,template_wl_unit=None,spectrum_wl_unit=None,wllims=[0.0,1e20],subtractone=True,transit_midpoint=None,tp=None,printphases=False):
+                 period=8.9891, scale=1.,day0=2453367.805,template_wl_unit=None,spectrum_wl_unit=None,wllims=[0.0,1e20],
+                 subtractone=True,transit_midpoint=None,tp=None,printphases=False,oddeven='both'):
         #only need to worry abot day0, period if badphases!=[]
         #subbtractone added to deal with transmission spectra
         self.byorder=False
@@ -97,6 +101,7 @@ class SpectrumSet:
         self.filename=filename
         self.folder=folder
         self.bad_date=bad_dates
+        self.oddeven=oddeven
         self.maskfile=maskfile
         self.template_fn=template_fn
         self.subset=subset
@@ -109,6 +114,7 @@ class SpectrumSet:
         self.template_wl_unit=template_wl_unit
         self.wllims=wllims
         self._read_flux_()
+        
         if tp==None:
             self.tp=day0
         else:
@@ -162,6 +168,18 @@ class SpectrumSet:
                     print(hjdall[i],pha,'bad? ',ba)
 
                 i=i+1  
+                
+        if self.oddeven!='both':
+            ivals=np.arange(len(hjdall))
+            if self.oddeven=='odd':
+                bd=ivals%2==0
+            elif self.oddeven=='even':
+                bd=ivals%2==1
+            for item in self.dates[bd]:
+
+                bad_dates.append(str(item))
+                bad_dates.append(float(item))
+                
 
 
 
@@ -213,7 +231,8 @@ class SpectrumSet:
         gooddat=self.data[goodlocs]
 
 
-        hjd=hjdall[goodlocs]   
+        hjd=hjdall[goodlocs] 
+        self.s2narr=np.ones_like(hjd)
 
         #read in template file
 
@@ -253,7 +272,29 @@ class SpectrumSet:
         self.gooddata=np.ma.masked_equal(gooddat,0)
         self.phases=((self.hjd-day0)/period) % 1.0 
         self.phases[self.phases>.5]=self.phases[self.phases>.5]-1.
+        self.badwls_mask=badwls_mask
         #good data
+        
+    def calculate_s2ns(self):
+        s2ns=[]
+        i=0
+        while i<self.l_good:
+            flux=self.gooddata[i]
+
+            fors2n=np.where((self.wls <2.316))        
+            a=flux[fors2n]           
+            #select a region that hass generally been corrected well for tellurics
+
+            s2ntem=findbests2n(flux[fors2n]+1,edge=5,p=95)
+            #find s2n of that region
+
+            s2ns.append(s2ntem)
+            i=i+1
+
+        s2narr=np.array(s2ns)
+        self.s2narr=s2narr
+        return s2narr
+                
     
     def filtertemplate(self,flip=False,butter=False,resample=1):
         '''resample is the ratio between the old resolution and the new resolution'''
@@ -297,7 +338,7 @@ class SpectrumSet:
         x=axarr.contourf(wlplot,self.phases,datplot)
         
         if centwl!=None:
-            rvshifts=np.array([planetrvshift(date,orbitalpars,day0=self.day0,code=code)+vsys for date in self.hjd])
+            rvshifts=-np.array([planetrvshift(date,orbitalpars,day0=self.day0,code=code)+vsys for date in self.hjd])
             wlline=astro_lf.veltodeltawl(rvshifts,centwl)+centwl
 
             axarr.plot(wlline,self.phases,color=lcolor,lw=2,zorder=40)
@@ -327,3 +368,10 @@ class SpectrumSet:
         self.M_cgs=M_star*Ms
         self.M_planet=M_planet
         self.M_planet_cgs=M_planet*Mj
+        
+    def printorders(self):
+        if self.byorder:
+            for o,w in enumerate(self.wls):
+                print('order ',o,' with limits of ',np.min(w),' and ',np.max(w))
+        else:
+            print('not in echelle format')

@@ -2,7 +2,7 @@ import sys
 sys.path.append('C:/Users/laura/programming/python/toimport')
 from stats_lf import xcor, xcor_fast, chisq, log_likelihood_zucker, gaussian2D
 import numpy as np
-from astro_lf import findbests2n, vel2wl, c_kms,wl2vel,veltodeltawl, getorbitpars
+from astro_lf import findbests2n, vel2wl, c_kms,wl2vel,veltodeltawl, getorbitpars, createwlscale
 from readwrite_lf import read2cols
 from PyAstronomy import pyasl
 from scipy import stats
@@ -15,6 +15,7 @@ import time
 import astro_lf
 import radvel_rv
 from astropy.io import fits
+
 
 from matplotlib import patches
 import matplotlib.colors as mpl
@@ -87,7 +88,8 @@ def planetrvshift(hhjd,par,day0,code='vcurve'):
 
         
 class CCFMatrix():
-    def __init__(self,velocities=np.arange(0, 110),low=-50,up=50,method='median',func=xcor,order='cx',disp=2.04,fromfile=''):
+    def __init__(self,velocities=np.arange(0, 110),low=-50,up=50,method='median',func=xcor,order='cx',disp=2.04,fromfile='',trim=5):
+        '''trim is % trimmed if method is trimmed mean'''
         self.func=func
         self.allccs=[]
         self.allcc_sigs=[]
@@ -103,30 +105,20 @@ class CCFMatrix():
             self.method=method
             self.order=order
 
-            self.rvs=np.arange(low,up+1,1)*disp          
-
-    def creatematrix(self, spectrumset,orbitalpars,indstart=0,indend=-1,day0=2453367.8,write=True,code='vcurve'):
-
+            self.rvs=np.arange(low,up+1,1)*disp
+        self.init_data=False
+        self.trim=trim
+    
+    def _addspecdata_(self,spectrumset,orbitalpars,day0,code):
+        self.init_data=True
         self.orbitalpars=orbitalpars
         self.idnum=spectrumset.idnum
-        self.day0=day0
-
-
-        #indend and indstart is if you want to subset a section of consecutive dates  
-        
-        if indend==-1:
-            indend=len(spectrumset.hjd)
-    
-    
-        ccarr=[]
-        cc2arr=[]
-        sigarr=[]
-        sig2arr=[]    
-        s2ns=[]
-
+        self.day0=day0        
+        self.wls=spectrumset.wls
+        self.byorder=spectrumset.byorder
         maxkp=np.max(self.velocities)
-    
-        l_good=len(spectrumset.hjd)
+        
+        
     
         starrvs=[]
         
@@ -143,85 +135,93 @@ class CCFMatrix():
             #print(pars2use)
         maxplanetrvs=np.array([planetrvshift(date,pars2use,day0=self.day0,code=code) for date in spectrumset.hjd])
         
-        for date in spectrumset.hjd:
-            #starrvs.append(stellarrvshift(date,orbitalpars,day0=self.day0,code=code))
-            starrvs=maxplanetrvs
+
         #print(maxplanetrvs)
+        self.l_good=len(spectrumset.hjd)
+        
+        self.orbitinfo=(maxplanetrvs,maxkp)
+        
+        return maxplanetrvs,maxkp
     
-    
-        if self.method=='weighted':
-            i=0
-            while i<l_good:
-                flux=spectrumset.gooddata[i]
-    
-                fors2n=np.where((spectrumset.wls <2.316))        
-                a=flux[fors2n]           
-                #select a region that hass generally been corrected well for tellurics
-    
-                s2ntem=findbests2n(flux[fors2n]+1,edge=5,p=95)
-                #find s2n of that region
-    
-                s2ns.append(s2ntem)
-                i=i+1
-    
-            s2narr=np.array(s2ns)
-    
-    
-        #print('rvlen',len(rvs))
-        #print(rvs)
-        #
-    
-        for vtemp in self.velocities:
-            if vtemp==0:
-                vmax=0.001
-            else:
-                vmax=vtemp
-            m_p=spectrumset.M_cgs*spectrumset.k_s/vmax
-            #m_p is in grams, because Mc is in grams; vmax, k_s are both in km/s
-    
-            massratio=vmax/spectrumset.k_s
-            Jupmasses=m_p/Mj
-    
-            #print 'v=',vmax
+    def _shiftbykp_(self,spectrumset,vtemp,maxplanetrvs,maxkp):
+        if spectrumset.byorder:
+            specs=np.zeros_like(spectrumset.gooddata)
+        else:
             specs=[]
-            #the mass of the planet in cgs
-    
-            planetfluxes=np.zeros((l_good,len(spectrumset.wls)))
-    
-    
-            i=0
-            while i<l_good:
-                flux=spectrumset.gooddata[i]
-    
-                flux[spectrumset.badwls]=0    
-    
-                starrv=starrvs[i]
-                #in km/s
-    
-                #momentum of star=
-                p=spectrumset.M_cgs*starrv
-    
-                #angular momentum is conserved and seperation is the same so M_p*v_p=-M_star*v_star
-                #v_p=-p/m_p
-                v_p=-starrv*massratio
-                v_p=maxplanetrvs[i]*vtemp/maxkp
-                #print(v_p)
-                #velocity of planet in km/s
-    
+            
+        i=0
+        while i<self.l_good:
+            flux=spectrumset.gooddata[i]
+
+            if spectrumset.byorder:
+                flux[spectrumset.badwls_mask==1]=0
+            else:
+                flux[spectrumset.badwls]=0              
+
+
+            v_p=maxplanetrvs[i]*vtemp/maxkp
+            #print(v_p)
+            #velocity of planet in km/s
+            
+            if spectrumset.byorder:
+                for o, f_o in enumerate(flux):
+                    nf_1, wl_1 = pyasl.dopplerShift(spectrumset.wls[o]*10000, f_o, -v_p, edgeHandling='firstlast', fillValue=None)
+                    specs[i,o]=nf_1
+                
+            else:
                 nf_1, wl_1 = pyasl.dopplerShift(spectrumset.wls*10000, flux, -v_p, edgeHandling='firstlast', fillValue=None)
-    
+
                 specs.append(nf_1)
-                #since I'm using the shifted flux, the wavelengths stay the same so I don't have to interpolate again
+            #since I'm using the shifted flux, the wavelengths stay the same so I don't have to interpolate again
+
+
+            i=i+1    
+        return specs
     
 
-                i=i+1
+        
+
+    def creatematrix(self, spectrumset,orbitalpars,indstart=0,indend=-1,day0=2453367.8,write=True,code='vcurve',orders=[]):
+        
+        if self.init_data==False:
+            maxplanetrvs,maxkp=self._addspecdata_(spectrumset,orbitalpars,day0,code)
+        else:
+            maxplanetrvs,maxkp=self.orbitinfo
+            
+
+        #indend and indstart is if you want to subset a section of consecutive dates  
+        
+        if indend==-1:
+            indend=len(spectrumset.hjd)
+    
+    
+        ccarr=[]
+        cc2arr=[]
+        sigarr=[]
+        sig2arr=[]    
+
+
+        
+    
+        if self.method=='weighted':
+            s2narr=spectrumset.s2narr
+
+    
+        for vtemp in self.velocities:
+            specs=self._shiftbykp_(spectrumset,vtemp,maxplanetrvs,maxkp)
+
+    
+            planetfluxes=np.zeros((self.l_good,len(spectrumset.wls)))
+    
+
     
             specsarr=np.array(specs)
     
             #trying something diff
             #
             #OR
-    
+            
+
             if self.order=='cx':
     
                 if self.method=='median':
@@ -233,15 +233,23 @@ class CCFMatrix():
                 elif self.method=='weighted':
                     medspec=np.average(specsarr[indstart:indend],0,weights=s2narr[0:])
                 else:
-                    medspec=stats.trim_mean(specsarr[indstart:indend], 0.05,axis=0)
+                    medspec=stats.trim_mean(specsarr[indstart:indend], self.trim/100.,axis=0)
     
                 #never mind, try replacing nan with 0
                 medspec=np.nan_to_num(medspec)
     
     
     
-    
-                cc=self.func(medspec,spectrumset.fl_co,self.low,self.up)
+                if spectrumset.byorder:
+                    cc_o=[]
+                    for o,medspec_o in enumerate(medspec):
+                        
+                        if orders==[] or o in orders:
+                            cc=self.func(medspec_o,spectrumset.fl_co[o],self.low,self.up)
+                            cc_o.append(np.nan_to_num(cc))
+                    cc=np.mean(np.array(cc_o),0)
+                else:
+                    cc=self.func(medspec,spectrumset.fl_co,self.low,self.up)
                 le=int((len(cc)-1)/2)
     
                 cc=np.array(cc)
@@ -280,11 +288,19 @@ class CCFMatrix():
         if write:
             self.writefile()
         self.allccs.append(self.ccarr)
-    def createcoadd(self, spectrumset,orbitalpars,indstart=0,indend=-1,day0=2453367.8,write=True,code='vcurve'):
-        self.orbitalpars=orbitalpars
-        self.idnum=spectrumset.idnum
-        self.day0=day0
-        self.wls=spectrumset.wls
+    def createcoadd(self, spectrumset,orbitalpars,indstart=0,indend=-1,day0=2453367.8,write=True,code='vcurve',orders=[]):
+        if orders!=[]:
+            if len(orders)>1:
+                print('coadds doesnt currently work for multiple orders')
+                return None
+                
+        self.orders=orders
+        
+        
+        if self.init_data==False:
+            maxplanetrvs,maxkp=self._addspecdata_(spectrumset,orbitalpars,day0,code)     
+        else:
+            maxplanetrvs,maxkp=self.orbitinfo
 
 
         #indend and indstart is if you want to subset a section of consecutive dates  
@@ -292,109 +308,24 @@ class CCFMatrix():
         if indend==-1:
             indend=len(spectrumset.hjd)
     
-    
-        ccarr=[]
-        cc2arr=[]
+
         sigarr=[]
         sig2arr=[]    
-        s2ns=[]
         meds=[]
-        maxkp=np.max(self.velocities)
-    
-        l_good=len(spectrumset.hjd)
-    
-        starrvs=[]
-        
-        if code=='sin'or code=='sine':
-            pars2use=np.zeros(3)
-            pars2use[2]=maxkp
-            pars2use[0:2]=orbitalpars[0:2]
-        elif code=='radvel':
-            pars2use=np.zeros(5)
-            pars2use[4]=maxkp
-            pars2use[0:4]=orbitalpars[0:4]        
-        else:
-            #print(orbitalpars)
-            pars2use=orbitalpars.copy()
-            maxvtheory=getorbitpars(m_s=spectrumset.M_star,period=orbitalpars[1],m_p=spectrumset.M_planet)['v_p']#np.pi*2*orbitalpars[2]*constants.au.value/(orbitalpars[1]*sec_in_day)*1e-3
-            #print(maxkp,maxvtheory)
-            pars2use[2]=maxkp/maxvtheory.value*orbitalpars[2]
-            #print(pars2use)
-        maxplanetrvs=np.array([planetrvshift(date,pars2use,day0=self.day0,code=code) for date in spectrumset.hjd])
-        
-        for date in spectrumset.hjd:
-            #starrvs.append(stellarrvshift(date,orbitalpars,day0=self.day0,code=code))
-            starrvs=maxplanetrvs
-        #print(maxplanetrvs)    
-    
 
     
         if self.method=='weighted':
-            i=0
-            while i<l_good:
-                flux=spectrumset.gooddata[i]
-    
-                fors2n=np.where((spectrumset.wls <2.316))        
-                a=flux[fors2n]           
-                #select a region that hass generally been corrected well for tellurics
-    
-                s2ntem=findbests2n(flux[fors2n]+1,edge=5,p=95)
-                #find s2n of that region
-    
-                s2ns.append(s2ntem)
-                i=i+1
-    
-            s2narr=np.array(s2ns)
-    
-    
-        #print('rvlen',len(rvs))
-        #print(rvs)
-        #
+            s2narr=spectrumset.s2narr
+
+
     
         for vtemp in self.velocities:
-            if vtemp==0:
-                vmax=0.001
-            else:
-                vmax=vtemp
-            m_p=spectrumset.M_cgs*spectrumset.k_s/vmax
-            #m_p is in grams, because Mc is in grams; vmax, k_s are both in km/s
+            specs=self._shiftbykp_(spectrumset,vtemp,maxplanetrvs,maxkp)
     
-            massratio=vmax/spectrumset.k_s
-            Jupmasses=m_p/Mj
+            planetfluxes=np.zeros((self.l_good,len(spectrumset.wls)))
     
-            #print 'v=',vmax
-            specs=[]
-            #the mass of the planet in cgs
-    
-            planetfluxes=np.zeros((l_good,len(spectrumset.wls)))
-    
-    
-            i=0
-            while i<l_good:
-                flux=spectrumset.gooddata[i]
-    
-                flux[spectrumset.badwls]=0    
-    
-                starrv=starrvs[i]
-                #in km/s
-    
-                #momentum of star=
-                p=spectrumset.M_cgs*starrv
-    
-                #angular momentum is conserved and seperation is the same so M_p*v_p=-M_star*v_star
-                #v_p=-p/m_p
-                v_p=-starrv*massratio
-                v_p=maxplanetrvs[i]*vtemp/maxkp
-                #velocity of planet in km/s
-    
-                nf_1, wl_1 = pyasl.dopplerShift(spectrumset.wls*10000, flux, -v_p, edgeHandling='firstlast', fillValue=None)
-    
-                specs.append(nf_1)
-                #since I'm using the shifted flux, the wavelengths stay the same so I don't have to interpolate again
     
 
-                i=i+1
-    
             specsarr=np.array(specs)
     
             #trying something diff
@@ -406,18 +337,26 @@ class CCFMatrix():
             if self.method=='median':
 
                 medspec=np.median(specsarr[indstart:indend],0)
-            elif self.method=='mean':
+            elif self.method=='mean' or self.method=='average':
                 medspec=np.mean(specsarr[indstart:indend],0)
 
             elif self.method=='weighted':
                 medspec=np.average(specsarr[indstart:indend],0,weights=s2narr[0:])
             else:
-                medspec=stats.trim_mean(specsarr[indstart:indend], 0.05,axis=0)
+                medspec=stats.trim_mean(specsarr[indstart:indend], self.trim/100., axis=0)
 
                 #never mind, try replacing nan with 0
             medspec=np.nan_to_num(medspec)
             meds.append(medspec)
-        self.coadds=np.array(meds)
+        meds=np.array(meds)
+        if self.byorder:
+            meds_out=np.zeros((meds.shape[0],meds.shape[2]))
+            for o in orders:
+                meds_out=meds_out+meds[:,o,:]
+            meds=meds_out
+            self.wls=self.wls[o]
+           
+        self.coadds=meds
     
     
 
@@ -438,13 +377,13 @@ class CCFMatrix():
         sig2arr=[]    
         s2ns=[]
     
-        l_good=len(spectrumset.hjd)
+        self.l_good=len(spectrumset.hjd)
 
     
     
         if self.method=='weighted':
             i=0
-            while i<l_good:
+            while i<self.l_good:
                 flux=spectrumset.gooddata[i]
     
                 fors2n=np.where((spectrumset.wls <2.316))        
@@ -462,11 +401,11 @@ class CCFMatrix():
 
         specs=[]
 
-        planetfluxes=np.zeros((l_good,len(spectrumset.wls)))
+        planetfluxes=np.zeros((self.l_good,len(spectrumset.wls)))
 
 
         i=0
-        while i<l_good:
+        while i<self.l_good:
             flux=spectrumset.gooddata[i]
 
             flux[spectrumset.badwls]=0    
@@ -507,8 +446,11 @@ class CCFMatrix():
         self.rvs,self.velocities,self.ccarr,self.low,self.up,self.method,self.order,self.disp=pickle.load(f)
         f.close()        
     
-    def plotcoaddmatrix(self,wlrange=None,wl_line=None,vsys=None,kp_lim=None,kp_line=None):
+    def plotcoaddmatrix(self,wlrange=None,wl_line=[],vsys=None,kp_lim=None,kp_line=None,binned=1.):
         '''wl_line in microns'''
+        
+      
+        
         if wlrange!=None:
             loc=((self.wls>=wlrange[0]) & (self.wls<=wlrange[1]))
             wlplot=self.wls[loc]
@@ -518,6 +460,18 @@ class CCFMatrix():
             coaddplot=self.coadds
         print('mean=',np.mean(coaddplot),' sd=',np.std(coaddplot))
         print('min=',np.min(coaddplot),' max=',np.max(coaddplot))
+            
+        if binned!=1:
+            dv0=2*(wlplot[1]-wlplot[0])/(wlplot[1]+wlplot[0])*c_kms
+            wls0=wlplot.copy()
+            #print(dv0,(wl0-dw),(wl0+dw))
+            wlplot=createwlscale(dv0*binned,wls0[0],wls0[-1])
+            #print(wlplot,wls0)
+            coaddplot0=coaddplot.copy()
+            coaddplot=spectres.spectres(wlplot,wls0,coaddplot0,verbose=False)
+    
+            print('mean=',np.mean(coaddplot),' sd=',np.std(coaddplot))
+            print('min=',np.min(coaddplot),' max=',np.max(coaddplot))
 
         fig=plt.figure(figsize=(8,5))
         axarr = fig.add_subplot(1,1,1)        
@@ -526,16 +480,18 @@ class CCFMatrix():
         axarr.set_xlabel('wavelength (microns)')
         temp=fig.colorbar(x)
         temp.ax.set_ylabel(r'relative flux')
-        if wl_line!=None:
-            w=wl_line+veltodeltawl(vsys,wl_line*1e4)*1e-4
-            axarr.axvline(w,ymin=-1000,ymax=1000,color='white',linestyle='--',zorder=20,alpha=.5)
+        if wl_line!=[]:
+            for item in wl_line:
+                w=item+veltodeltawl(vsys,item*1e4)*1e-4
+                axarr.axvline(w,ymin=-1000,ymax=1000,color='white',linestyle='--',zorder=20,alpha=.5)
         if kp_line!=None:
             axarr.axhline(kp_line,xmin=np.min(self.rvs)-1,xmax=np.max(self.rvs)+1,color='white',linestyle='--',alpha=.5)        
         if kp_lim==None:
             plt.ylim(0,np.max(self.velocities))
         else:
             plt.ylim(0,kp_lim)
-   
+        if binned!=1:
+            plt.xlim(wlplot[1],wlplot[-3])
     
     def plotccfvsphase(self,spectrumset, orbitalpars,rv_lim=100,levels=10,cm='viridis',kp_val=None,showplot=True,lcolor='white',lalpha=0.5,phasestart=0,phaseend=0,day0=2453367.8,code='vcurve',per='3.',vsys=0.):
 
@@ -661,30 +617,53 @@ class CCFMatrix():
         return self.rvs,self.ccarr[loc].flatten()
         #plt.close()
 
-    def plotcoadd(self,kp_val,wl0,dw=2,rv_line=None,wlunits='$\mathrm{\AA}$',lcolor='gray',lalpha=1.,showplot=True):
+    def plotcoadd(self,kp_val,wl0,dw=2,rv_line=None,wlunits='$\mathrm{\AA}$',lcolor='gray',lalpha=1.,showplot=True,binned=1):
 
         def vel2wl2(wl):
             return vel2wl(wl,wl0)
-        
+    
+        dif=np.abs(self.velocities-kp_val)
+        loc=np.where(dif==np.min(dif))        
+
         
         if wlunits!='microns':
             if wlunits=='$\mathrm{\AA}$':
                 wls=self.wls*1e4
             elif wlunits=='nm':
-                wls=self.sls*1e3
+                wls=self.wls*1e3
         else:
             wls=self.wls
+            
+        if binned!=1:
+            locwl=np.where((wls<(wl0+dw))&(wls>(wl0-dw)))
+            dv0=2*(wls[1]-wls[0])/(wls[1]+wls[0])*c_kms
+            wls0=wls
+            #print(dv0,(wl0-dw),(wl0+dw))
+            wls=createwlscale(dv0*binned,(wl0-dw),(wl0+dw))
+            
+            
         #vticklocs=np.round(wl2vel(np.array(ticklocs),cenwl),0)
 
         fig,axarr=plt.subplots(figsize=(16,5))
         #axarr = fig.add_subplot(1,1,1)
         
-        dif=np.abs(self.velocities-kp_val)
-        loc=np.where(dif==np.min(dif))
-        axarr.plot(wls,self.coadds[loc].flatten())
-        ax2=axarr.secondary_xaxis("top", functions=(wl2vel, vel2wl2))
+
+
+        locwl=np.where((wls<(wl0+dw))&(wls>(wl0-dw)))
+
+            
+        plotvals=self.coadds[loc].flatten()[locwl]
+        if binned==1:
+            wls=wls[locwl]
         
-        plotvals=self.coadds[loc].flatten()[np.where((wls<(wl0+dw))&(wls>(wl0-dw)))]
+        
+        
+        
+        if binned!=1:
+            plotvals=spectres.spectres(wls,wls0,self.coadds[loc].flatten())
+        axarr.plot(wls,plotvals)
+        ax2=axarr.secondary_xaxis("top", functions=(wl2vel, vel2wl2))            
+        
         minpv=np.min(plotvals)
         maxpv=np.max(plotvals)
         if rv_line!=None:
@@ -701,7 +680,36 @@ class CCFMatrix():
         if showplot:
             plt.show()
         plt.close()
-        return wls,self.coadds[loc].flatten()
+        return wls,wl2vel(wls,wl0),plotvals
+    
+    def coadd_coadds(self,lines,kp_val,dw=2,rv_line=None,wlunits='$\mathrm{\AA}$',lcolor='gray',lalpha=1.,showplot=True,binned=1):
+        coadd_res=[self.plotcoadd(kp_val,line,dw,rv_line,wlunits,lcolor,lalpha,showplot=False,binned=binned) for line in lines]
+        vels_arr=[item[1] for item in coadd_res]
+        #print(coadd_res)
+        dv0=vels_arr[0][1]-vels_arr[0][0]
+        dv=binned*dv0
+        #print(len(vels_arr))
+        minmaxs_t=np.array([np.array([np.min(item),np.max(item)]) for item in vels_arr])
+
+        minmaxs=minmaxs_t.transpose()
+        minv=np.max(minmaxs[0])
+        maxv=np.min(minmaxs[1])
+        nbins=np.floor((maxv-minv)/dv)
+        vels=np.arange(nbins)*float(dv)+minv
+
+        fluxes=np.array([np.interp(vels,item[1],item[2]) for item in coadd_res])
+
+        coadded_flux=np.sum(fluxes,axis=0)
+        if showplot:
+            plt.plot(vels,coadded_flux)
+            plt.xlabel('velocity (km/s)')
+            plt.ylabel('flux')
+            plt.show()
+        return vels,coadded_flux
+            
+                         
+        
+
 
     def _createsigmatrixdata_(self,kp_lim=100,neg_kp=False,rv_lim=None,block=[],tonorm=True,negsig=False):
         if rv_lim==None:

@@ -341,6 +341,7 @@ class CCFMatrix():
                 medspec=np.mean(specsarr[indstart:indend],0)
 
             elif self.method=='weighted':
+                print('s2ns=',s2narr)
                 medspec=np.average(specsarr[indstart:indend],0,weights=s2narr[0:])
             else:
                 medspec=stats.trim_mean(specsarr[indstart:indend], self.trim/100., axis=0)

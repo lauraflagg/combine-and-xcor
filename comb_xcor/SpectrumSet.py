@@ -278,8 +278,7 @@ class SpectrumSet:
     def calculate_s2ns(self):
         s2ns=[]
         i=0
-        while i<self.l_good:
-            flux=self.gooddata[i]
+        for flux in self.gooddata:
 
             fors2n=np.where((self.wls <2.316))        
             a=flux[fors2n]           
@@ -338,7 +337,7 @@ class SpectrumSet:
         x=axarr.contourf(wlplot,self.phases,datplot)
         
         if centwl!=None:
-            rvshifts=-np.array([planetrvshift(date,orbitalpars,day0=self.day0,code=code)+vsys for date in self.hjd])
+            rvshifts=-np.array([planetrvshift(date,orbitalpars,day0=self.day0,code=code)-vsys for date in self.hjd])
             wlline=astro_lf.veltodeltawl(rvshifts,centwl)+centwl
 
             axarr.plot(wlline,self.phases,color=lcolor,lw=2,zorder=40)

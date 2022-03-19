@@ -683,7 +683,7 @@ class CCFMatrix():
         plt.close()
         return wls,wl2vel(wls,wl0),plotvals
     
-    def coadd_coadds(self,lines,kp_val,dw=2,rv_line=None,wlunits='$\mathrm{\AA}$',lcolor='gray',lalpha=1.,showplot=True,binned=1):
+    def coadd_coadds(self,lines,kp_val,dw=2,rv_line=None,wlunits='$\mathrm{\AA}$',lcolor='gray',lalpha=1.,showplot=True,binned=1,printsd=False):
         coadd_res=[self.plotcoadd(kp_val,line,dw,rv_line,wlunits,lcolor,lalpha,showplot=False,binned=binned) for line in lines]
         vels_arr=[item[1] for item in coadd_res]
         #print(coadd_res)
@@ -706,6 +706,8 @@ class CCFMatrix():
             plt.xlabel('velocity (km/s)')
             plt.ylabel('flux')
             plt.show()
+        if printsd:
+            print(np.std(coadded_flux,ddof=1))
         return vels,coadded_flux
             
                          

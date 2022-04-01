@@ -73,7 +73,7 @@ def vac2air(vacwave):
 
 
 # In[13]:
-def convert_GRACES(per,day0,td_days,filestart='graces',fileend='.npz',sigcut=None,orders=np.arange(70),minlen=5903):
+def convert_GRACES(per,day0,td_days,filestart='graces',fileend='.npz',sigcut=None,orders=np.arange(70),minlen=5903,savecode=''):
 
     ls=len(filestart)
     le=len(fileend)
@@ -222,7 +222,7 @@ def convert_GRACES(per,day0,td_days,filestart='graces',fileend='.npz',sigcut=Non
     if sigcut==None:
         sigfn=''
         
-    fnbase=filestart+'_'+fileend[:-5]+sigfn+'.pic'
+    fnbase=filestart+'_'+fileend[:-5]+sigfn+savecode+'.pic'
     # In[53]:
 
 

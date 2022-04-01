@@ -19,6 +19,7 @@ from astropy.io import fits
 from matplotlib import patches
 import matplotlib.colors as mpl
 from lmfit import Model
+from scipy.signal import butter, sosfilt, sosfreqz, ellip, sosfiltfilt, filtfilt, freqz
 #from lmfit.lineshapes import gaussian2d
 #from lmfit.models import Gaussian2dModel
 
@@ -29,6 +30,20 @@ logging.basicConfig(level=logging.INFO,filename=logfile)
 
 from comb_xcor.ccfmatrix import planetrvshift
 
+def ButterFilter_quiet(x,freq,type='highpass',order=5):
+    """
+    x - data
+    freq - cutoff frequency/ies, where 1 corresponds to nyquist frequency (ie half the
+    sampling rate)
+    """
+    freq = np.array(freq) #allows lists for bandpass arrays print "Assuming sampling of 1Hz:"
+    #print(" Nyquist frequency: {} Hz (2 pixels)".format(0.5) )
+    #print (" Min frequency: {:.7f} Hz ({} pixels, i.e. full  length)".format(1./x.shape[-1],x.shape[-1]))
+    #print( " Cutoff frequency: {} Hz ({} pixels)".format(freq * 0.5,2./freq)) #create the filter 
+    sos = butter(order, freq, analog=False, btype=type, output='sos')
+    #apply the filter
+    y = sosfiltfilt(sos, x)
+    return y
 
 
 '''encorporates _upgrade'''
@@ -295,12 +310,12 @@ class SpectrumSet:
         return s2narr
                 
     
-    def filtertemplate(self,flip=False,butter=False,resample=1):
+    def filtertemplate(self,flip=False,butter_freq=False,butter_order=5,resample=1):
         '''resample is the ratio between the old resolution and the new resolution'''
         if flip:
             self.fl_co=-self.fl_co
-        if butter:
-            None
+        if butter_freq!=False:
+            self.fl_co=ButterFilter_quiet(self.fl_co,butter_freq,order=butter_order)
             
     def plottemplate(self,wlrange=None):
 

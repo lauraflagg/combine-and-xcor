@@ -227,7 +227,7 @@ class CCFMatrix():
                 if self.method=='median':
     
                     medspec=np.median(specsarr[indstart:indend],0)
-                elif self.method=='mean':
+                elif self.method=='mean' or self.method=='average':
                     medspec=np.mean(specsarr[indstart:indend],0)
     
                 elif self.method=='weighted':
@@ -272,7 +272,7 @@ class CCFMatrix():
                 if self.method=='median':
     
                     medspec=np.median(ccs[indstart:indend],0)
-                elif self.method=='mean':
+                elif self.method=='mean' or self.method=='average':
                     medspec=np.mean(ccs[indstart:indend],0)
     
                 elif self.method=='weighted':

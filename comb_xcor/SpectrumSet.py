@@ -54,7 +54,8 @@ Mj=1.8986*10.0**30
 class SpectrumSet:
     def _read_flux_(self):
         if self.filename[-8:]=='dict.pic':
-            self.byorder=True
+            if 'byorder' in self.filename:
+                self.byorder=True
             ob = open(self.loc, "rb")
             dat=pickle.load(ob)
             self.dates=dat['dates'].astype(np.float)
@@ -108,10 +109,10 @@ class SpectrumSet:
 
     def __init__(self,filename,folder,bad_dates=None,maskfile=None,template_fn='template_width0p2_CO.csv',subset='',badphases=[],
                  period=8.9891, scale=1.,day0=2453367.805,template_wl_unit=None,spectrum_wl_unit=None,wllims=[0.0,1e20],
-                 subtractone=True,transit_midpoint=None,tp=None,printphases=False,oddeven='both'):
+                 subtractone=True,transit_midpoint=None,tp=None,printphases=False,oddeven='both',byorder=False):
         #only need to worry abot day0, period if badphases!=[]
         #subbtractone added to deal with transmission spectra
-        self.byorder=False
+        self.byorder=byorder
         self.idnum=filename[-12:-4]
         self.filename=filename
         self.folder=folder
@@ -290,13 +291,13 @@ class SpectrumSet:
         self.badwls_mask=badwls_mask
         #good data
         
-    def calculate_s2ns(self):
+    def calculate_s2ns(self,wllims=(.3,2.316)):
         s2ns=[]
         i=0
         for flux in self.gooddata:
 
-            fors2n=np.where((self.wls <2.316))        
-            a=flux[fors2n]           
+            fors2n=((self.wls >wllims[0]) & (self.wls <wllims[1]))        
+     
             #select a region that hass generally been corrected well for tellurics
 
             s2ntem=findbests2n(flux[fors2n]+1,edge=5,p=95)

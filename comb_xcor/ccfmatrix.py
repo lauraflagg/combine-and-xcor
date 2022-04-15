@@ -153,10 +153,9 @@ class CCFMatrix():
         while i<self.l_good:
             flux=spectrumset.gooddata[i]
 
-            if spectrumset.byorder:
-                flux[spectrumset.badwls_mask==1]=0
-            else:
-                flux[spectrumset.badwls]=0              
+
+            flux[spectrumset.badwls_mask==1]=0
+         
 
 
             v_p=maxplanetrvs[i]*vtemp/maxkp
@@ -409,7 +408,7 @@ class CCFMatrix():
         while i<self.l_good:
             flux=spectrumset.gooddata[i]
 
-            flux[spectrumset.badwls]=0    
+            flux[spectrumset.badwls_mask==1]=0#flux[spectrumset.badwls]=0    
 
 
             specs.append(flux)

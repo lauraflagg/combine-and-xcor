@@ -221,7 +221,8 @@ class SpectrumSet:
         meanstar=np.mean(self.data[goodlocs],0)
         l_good=len(goodlocs)
 
-
+        wllimlocs=((self.wls<wllims[1]) & (self.wls>wllims[0]))
+        self.wls=self.wls[wllimlocs]
 
         badwls=np.array([])
         badwls_mask=np.zeros_like(self.wls)
@@ -282,13 +283,19 @@ class SpectrumSet:
         fl_co=fl_co*scale
 
         plot=1
+        
+
         self.hjd=hjd
         self.badwls=badwls
         self.fl_co=np.ma.masked_equal(fl_co,0)
+        #self.fl_co=self.fl_co[wllimlocs]
         self.gooddata=np.ma.masked_equal(gooddat,0)
+        self.gooddata=self.gooddata[:,wllimlocs]
+
         self.phases=((self.hjd-day0)/period) % 1.0 
         self.phases[self.phases>.5]=self.phases[self.phases>.5]-1.
-        self.badwls_mask=badwls_mask
+        self.badwls_mask=badwls_mask#[wllimlocs]
+        #self.badwls=self.badwls[wllimlocs]
         #good data
         
     def calculate_s2ns(self,wllims=(.3,2.316)):

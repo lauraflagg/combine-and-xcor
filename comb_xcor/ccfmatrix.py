@@ -143,11 +143,12 @@ class CCFMatrix():
         
         return maxplanetrvs,maxkp
     
-    def _shiftbykp_(self,spectrumset,vtemp,maxplanetrvs,maxkp):
+    def _shiftbykp_(self,spectrumset,vtemp,maxplanetrvs,maxkp,douncs=False):
         if spectrumset.byorder:
             specs=np.zeros_like(spectrumset.gooddata)
         else:
             specs=[]
+            uncs=[]
             
         i=0
         while i<self.l_good:
@@ -169,13 +170,19 @@ class CCFMatrix():
                 
             else:
                 nf_1, wl_1 = pyasl.dopplerShift(spectrumset.wls*10000, flux, -v_p, edgeHandling='firstlast', fillValue=None)
+                if hasattr(spectrumset, 'gooduncs') and douncs==True:
+                    if np.median(spectrumset.gooduncs)>0:
+                        uncs_1,wl_1=pyasl.dopplerShift(spectrumset.wls*10000, spectrumset.gooduncs[i], -v_p, edgeHandling='firstlast', fillValue=None)
 
                 specs.append(nf_1)
+                if douncs:
+                    uncs.append(uncs_1)
             #since I'm using the shifted flux, the wavelengths stay the same so I don't have to interpolate again
 
 
-            i=i+1    
-        return specs
+            i=i+1 
+
+        return specs,uncs
     
 
         
@@ -207,7 +214,7 @@ class CCFMatrix():
 
     
         for vtemp in self.velocities:
-            specs=self._shiftbykp_(spectrumset,vtemp,maxplanetrvs,maxkp)
+            specs,uncs=self._shiftbykp_(spectrumset,vtemp,maxplanetrvs,maxkp)
 
     
             planetfluxes=np.zeros((self.l_good,len(spectrumset.wls)))
@@ -287,7 +294,7 @@ class CCFMatrix():
         if write:
             self.writefile()
         self.allccs.append(self.ccarr)
-    def createcoadd(self, spectrumset,orbitalpars,indstart=0,indend=-1,day0=2453367.8,write=True,code='vcurve',orders=[]):
+    def createcoadd(self, spectrumset,orbitalpars,indstart=0,indend=-1,day0=2453367.8,write=True,code='vcurve',orders=[],douncs=False):
         if orders!=[]:
             if len(orders)>1:
                 print('coadds doesnt currently work for multiple orders')
@@ -319,7 +326,7 @@ class CCFMatrix():
 
     
         for vtemp in self.velocities:
-            specs=self._shiftbykp_(spectrumset,vtemp,maxplanetrvs,maxkp)
+            specs,uncs=self._shiftbykp_(spectrumset,vtemp,maxplanetrvs,maxkp,douncs=douncs)
     
             planetfluxes=np.zeros((self.l_good,len(spectrumset.wls)))
     

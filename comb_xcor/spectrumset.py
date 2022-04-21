@@ -54,13 +54,18 @@ Mj=1.8986*10.0**30
 class SpectrumSet:
     def _read_flux_(self):
         if self.filename[-8:]=='dict.pic':
-            if 'byorder' in self.filename:
-                self.byorder=True
+
             ob = open(self.loc, "rb")
             dat=pickle.load(ob)
             self.dates=dat['dates'].astype(np.float)
             self.data=dat['fluxes']
-            wls=dat['wls']        
+            wls=dat['wls']
+            if 'byorder' in self.filename:
+                self.byorder=True
+                self.uncs=np.zeros_like(self.data)
+            else:
+                self.uncs=dat['uncs']
+            #print(self.uncs.shape,self.data.shape)
         
         elif self.filename[-3:]=='pic':
             ob = open(self.loc, "rb")
@@ -68,6 +73,7 @@ class SpectrumSet:
             dat=dat0.transpose()
             self.dates=np.array(d[1:]).astype(np.float)
             self.data=dat[1:,:].astype(np.float)
+            self.uncs=np.zeros_like(self.data)
             wls=dat[0]
         else:
             flux=pd.read_csv(self.loc,header=None)
@@ -79,6 +85,7 @@ class SpectrumSet:
             self.data=data1[1:,:].astype(np.float)
             
             wls=data1[:][0]
+            self.uncs=np.zeros_like(self.data)
         self.wls=wls.astype(np.float)     
 
     def _read_template_(self):
@@ -222,7 +229,8 @@ class SpectrumSet:
         l_good=len(goodlocs)
 
         wllimlocs=((self.wls<wllims[1]) & (self.wls>wllims[0]))
-        self.wls=self.wls[wllimlocs]
+        self.wls_orig=self.wls.copy()
+        self.wls=self.wls_orig[wllimlocs]
 
         badwls=np.array([])
         badwls_mask=np.zeros_like(self.wls)
@@ -246,7 +254,7 @@ class SpectrumSet:
 
 
         gooddat=self.data[goodlocs]
-
+        gooduncs=self.uncs[goodlocs]
 
         hjd=hjdall[goodlocs] 
         self.s2narr=np.ones_like(hjd)
@@ -289,8 +297,10 @@ class SpectrumSet:
         self.badwls=badwls
         self.fl_co=np.ma.masked_equal(fl_co,0)
         #self.fl_co=self.fl_co[wllimlocs]
+        
         self.gooddata=np.ma.masked_equal(gooddat,0)
         self.gooddata=self.gooddata[:,wllimlocs]
+        self.gooduncs=gooduncs[:,wllimlocs]
 
         self.phases=((self.hjd-day0)/period) % 1.0 
         self.phases[self.phases>.5]=self.phases[self.phases>.5]-1.

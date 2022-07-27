@@ -15,7 +15,7 @@ import time
 import astro_lf
 import radvel_rv
 from astropy.io import fits
-
+from astropy.timeseries import LombScargle
 from matplotlib import patches
 import matplotlib.colors as mpl
 from lmfit import Model
@@ -334,7 +334,48 @@ class SpectrumSet:
             self.fl_co=-self.fl_co
         if butter_freq!=False:
             self.fl_co=ButterFilter_quiet(self.fl_co,butter_freq,order=butter_order)
+
+                
+    def fourierfilter(self,dlam=[1e-5,1e-4],wlrange=[0,1e7],plot=True,filternow=False):
+        loc=(self.wls<wlrange[1]) & (self.wls>wlrange[0])
+        maxlocs=[]
+        if plot:
+            plt.figure(figsize=(12,8))
+        if self.spectrum_wl_unit=='microns':
+            wls=self.wls*1e4
+            dlam=np.array(dlam)*1e4
+            wlrange=np.array(wlrange)*1e4
+        else:
+            wls=self.wls
+        for item in self.gooddata:
+            #freqs=1./np.linspace(dlam[0],dlam[1],1000)
             
+            freqs, power = LombScargle(wls[loc], item[loc]).autopower(minimum_frequency=1./dlam[1],maximum_frequency=1./dlam[0],samples_per_peak=10)
+            maxloc= power==max(power)
+            maxlocs.append(1./freqs[maxloc])
+            if plot:
+                plt.subplot(3,1,1)
+                plt.plot(1./freqs,power)
+                #plt.hlines(1./freqs[maxloc],0,np.max(power)*1.1)
+                #plt.title('max at wl='+str(round(1./freqs[maxloc]*1e4,2))+' AA') 
+
+                plt.subplot(3,1,2)
+    
+                plt.plot(wls,item)
+
+        if plot:
+            plt.subplot(3,1,1)
+
+            #plt.title('max at wl='+str(round(1./freqs[maxloc]*1e4,2))+' AA') 
+            plt.xlabel('wl')
+            plt.ylabel('power')
+            plt.subplot(3,1,2)
+            plt.xlabel('wl')
+
+            plt.xlim(wlrange[0],wlrange[1])
+            plt.subplot(3,1,3)            
+            plt.hist(np.array(maxlocs).flatten())
+            #print(np.array(maxlocs).flatten())
     def plottemplate(self,wlrange=None):
 
         if wlrange!=None:
@@ -370,7 +411,7 @@ class SpectrumSet:
         x=axarr.contourf(wlplot,self.phases,datplot)
         
         if centwl!=None:
-            rvshifts=-np.array([planetrvshift(date,orbitalpars,day0=self.day0,code=code)-vsys for date in self.hjd])
+            rvshifts=np.array([planetrvshift(date,orbitalpars,day0=self.day0,code=code)+vsys for date in self.hjd]) #NO CLUE if this is correct, signs are confusing
             wlline=astro_lf.veltodeltawl(rvshifts,centwl)+centwl
 
             axarr.plot(wlline,self.phases,color=lcolor,lw=2,zorder=40)
@@ -387,6 +428,8 @@ class SpectrumSet:
         loc=((self.wls<=(wlcent+wlwid)) & (self.wls>=(wlcent-wlwid)))
         self.fl_co=np.ma.masked_where(loc,self.fl_co)
         self.gooddata[:,loc]=0.
+        if hasattr(self,'gooduncs'):
+            self.gooduncs[:,loc]=np.nan
         self.gooddata=np.ma.masked_equal(self.gooddata,0)
         
 

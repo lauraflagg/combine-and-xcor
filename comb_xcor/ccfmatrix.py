@@ -15,7 +15,7 @@ import time
 import astro_lf
 import radvel_rv
 from astropy.io import fits
-
+from uncertainties import unumpy
 
 from matplotlib import patches
 import matplotlib.colors as mpl
@@ -34,6 +34,25 @@ logging.basicConfig(level=logging.INFO,filename=logfile)
 Ms=1.989*10.0**33
 Mj=1.8986*10.0**30
 #in cgs, mass of sun and jupiter
+
+def bin_wavelengths(wls0,wl_lims,binned=1,wlunits='$\mathrm{\AA}$'):
+    wl0=(wl_lims[0]+wl_lims[1])/2.
+    dw=(wl_lims[1]-wl_lims[0])/2.
+    if wlunits!='microns':
+        if wlunits=='$\mathrm{\AA}$':
+            wls=wls0*1e4
+        elif wlunits=='nm':
+            wls=wls0*1e3
+    else:
+        wls=wls0
+        
+    if binned!=1:
+        locwl=np.where((wls<(wl0+dw))&(wls>(wl0-dw)))
+        dv0=2*(wls[1]-wls[0])/(wls[1]+wls[0])*c_kms
+        wls0=wls
+        #print(dv0,(wl0-dw),(wl0+dw))
+        wls=createwlscale(dv0*binned,(wl0-dw),(wl0+dw))
+    return wls, wls0
 
 
 
@@ -110,6 +129,7 @@ class CCFMatrix():
         self.trim=trim
     
     def _addspecdata_(self,spectrumset,orbitalpars,day0,code):
+        self.phases=spectrumset.phases
         self.init_data=True
         self.orbitalpars=orbitalpars
         self.idnum=spectrumset.idnum
@@ -171,7 +191,7 @@ class CCFMatrix():
             else:
                 nf_1, wl_1 = pyasl.dopplerShift(spectrumset.wls*10000, flux, -v_p, edgeHandling='firstlast', fillValue=None)
                 if hasattr(spectrumset, 'gooduncs') and douncs==True:
-                    if np.median(spectrumset.gooduncs)>0:
+                    if np.nanmedian(spectrumset.gooduncs)>0:
                         uncs_1,wl_1=pyasl.dopplerShift(spectrumset.wls*10000, spectrumset.gooduncs[i], -v_p, edgeHandling='firstlast', fillValue=None)
 
                 specs.append(nf_1)
@@ -295,12 +315,17 @@ class CCFMatrix():
             self.writefile()
         self.allccs.append(self.ccarr)
     def createcoadd(self, spectrumset,orbitalpars,indstart=0,indend=-1,day0=2453367.8,write=True,code='vcurve',orders=[],douncs=False):
+        if douncs and self.method!='mean' and self.method!='average':
+            print('if doing uncertanties, method must be mean/average')
+            print('your method is:',self.method)
+            return
         if orders!=[]:
             if len(orders)>1:
                 print('coadds doesnt currently work for multiple orders')
                 return None
                 
         self.orders=orders
+        self.douncs=douncs
         
         
         if self.init_data==False:
@@ -318,6 +343,7 @@ class CCFMatrix():
         sigarr=[]
         sig2arr=[]    
         meds=[]
+        meds_uncs=[]
 
     
         if self.method=='weighted':
@@ -333,6 +359,7 @@ class CCFMatrix():
     
 
             specsarr=np.array(specs)
+            self.lightcurve_unbinned=specsarr
     
             #trying something diff
             #
@@ -344,7 +371,14 @@ class CCFMatrix():
 
                 medspec=np.median(specsarr[indstart:indend],0)
             elif self.method=='mean' or self.method=='average':
-                medspec=np.mean(specsarr[indstart:indend],0)
+                if douncs:
+                    #goodlocs=((specs
+                    arrtemp=unumpy.uarray(specs,uncs)
+                    medspec_wu=arrtemp.mean(axis=0)
+                    medspec=unumpy.nominal_values(medspec_wu)
+                    uncspec=unumpy.std_devs(medspec_wu)
+                else:
+                    medspec=np.mean(specsarr[indstart:indend],0)
 
             elif self.method=='weighted':
                 print('s2ns=',s2narr)
@@ -355,6 +389,8 @@ class CCFMatrix():
                 #never mind, try replacing nan with 0
             medspec=np.nan_to_num(medspec)
             meds.append(medspec)
+            if douncs:
+                meds_uncs.append(uncspec)
         meds=np.array(meds)
         if self.byorder:
             meds_out=np.zeros((meds.shape[0],meds.shape[2]))
@@ -364,6 +400,8 @@ class CCFMatrix():
             self.wls=self.wls[o]
            
         self.coadds=meds
+        if self.douncs:
+            self.coadds_uncs=np.array(meds_uncs)
     
     
 
@@ -500,7 +538,7 @@ class CCFMatrix():
         if binned!=1:
             plt.xlim(wlplot[1],wlplot[-3])
     
-    def plotccfvsphase(self,spectrumset, orbitalpars,rv_lim=100,levels=10,cm='viridis',kp_val=None,showplot=True,lcolor='white',lalpha=0.5,phasestart=0,phaseend=0,day0=2453367.8,code='vcurve',per='3.',vsys=0.):
+    def plotccfvsphase(self,spectrumset, orbitalpars,rv_lim=100,levels=10,cm='viridis',kp_val=None,showplot=True,lcolor='white',lalpha=0.5,phasestart=0,phaseend=0,day0=2453367.8,code='vcurve',per='3.',vsys=0.,hlines=[]):
 
         phases=spectrumset.phases
         #print(phases)
@@ -518,6 +556,10 @@ class CCFMatrix():
 
             axarr.plot(rvshift[phases<phasestart],phases[phases<phasestart],color=lcolor,alpha=lalpha,lw=2,zorder=40)
             axarr.plot(rvshift[phases>phaseend],phases[phases>phaseend],color=lcolor,alpha=lalpha)
+        if hlines!=[]:
+            for item in hlines:
+                print(item)
+                axarr.axhline(item,-rv_lim,rv_lim,zorder=41,color=lcolor)
         axarr.set_ylim(np.min(phases),np.max(phases))
         axarr.set_xlim(-rv_lim,rv_lim)
         axarr.set_xlabel(r'systemic velocity (km s$^{-1}$)',fontsize=16)
@@ -633,21 +675,8 @@ class CCFMatrix():
         loc=np.where(dif==np.min(dif))        
 
         
-        if wlunits!='microns':
-            if wlunits=='$\mathrm{\AA}$':
-                wls=self.wls*1e4
-            elif wlunits=='nm':
-                wls=self.wls*1e3
-        else:
-            wls=self.wls
-            
-        if binned!=1:
-            locwl=np.where((wls<(wl0+dw))&(wls>(wl0-dw)))
-            dv0=2*(wls[1]-wls[0])/(wls[1]+wls[0])*c_kms
-            wls0=wls
-            #print(dv0,(wl0-dw),(wl0+dw))
-            wls=createwlscale(dv0*binned,(wl0-dw),(wl0+dw))
-            
+        wls,wls0=bin_wavelengths(self.wls,((wl0-dw),(wl0+dw)),binned,wlunits)
+
             
         #vticklocs=np.round(wl2vel(np.array(ticklocs),cenwl),0)
 
@@ -660,6 +689,8 @@ class CCFMatrix():
 
             
         plotvals=self.coadds[loc].flatten()[locwl]
+        if self.douncs:
+            uncvals=self.coadds_uncs[loc].flatten()[locwl]
         if binned==1:
             wls=wls[locwl]
         
@@ -667,8 +698,14 @@ class CCFMatrix():
         
         
         if binned!=1:
-            plotvals=spectres.spectres(wls,wls0,self.coadds[loc].flatten())
+            
+            if self.douncs:
+                plotvals, uncvals=spectres.spectres(wls,wls0,self.coadds[loc].flatten(),spec_errs=self.coadds_uncs[loc].flatten())
+            else:
+                plotvals=spectres.spectres(wls,wls0,self.coadds[loc].flatten())
         axarr.plot(wls,plotvals)
+        if self.douncs:
+            axarr.errorbar(wls,plotvals,yerr=uncvals)
         ax2=axarr.secondary_xaxis("top", functions=(wl2vel, vel2wl2))            
         
         minpv=np.min(plotvals)
@@ -687,6 +724,8 @@ class CCFMatrix():
         if showplot:
             plt.show()
         plt.close()
+        if self.douncs:
+            return wls,wl2vel(wls,wl0),plotvals,uncvals
         return wls,wl2vel(wls,wl0),plotvals
     
     def coadd_coadds(self,lines,kp_val,dw=2,rv_line=None,wlunits='$\mathrm{\AA}$',lcolor='gray',lalpha=1.,showplot=True,binned=1,printsd=False):
@@ -705,15 +744,30 @@ class CCFMatrix():
         vels=np.arange(nbins)*float(dv)+minv
 
         fluxes=np.array([np.interp(vels,item[1],item[2]) for item in coadd_res])
-
-        coadded_flux=np.sum(fluxes,axis=0)
+        if self.douncs:
+            uncs=np.array([np.interp(vels,item[1],item[3]) for item in coadd_res])
+        
+        
+        if self.douncs:
+            arrtemp0=unumpy.uarray(fluxes,uncs)
+            arrtemp=arrtemp0.sum(axis=0)
+            coadded_flux=unumpy.nominal_values(arrtemp)
+            coadded_uncs=unumpy.std_devs(arrtemp)
+            
+        else:
+            coadded_flux=np.sum(fluxes,axis=0)
         if showplot:
             plt.plot(vels,coadded_flux)
+            if self.douncs:
+                plt.errorbar(vels,coadded_flux,yerr=coadded_uncs)
             plt.xlabel('velocity (km/s)')
             plt.ylabel('flux')
             plt.show()
         if printsd:
             print(np.std(coadded_flux,ddof=1))
+        if self.douncs:
+            return vels,coadded_flux,coadded_uncs
+        self.coadded_coadds=coadded_flux
         return vels,coadded_flux
             
                          
@@ -871,11 +925,14 @@ class CCFMatrix():
             
 
         #print(np.max(plotvals))
-        dif=np.abs(self.velocities-kp_val)
-        loc=np.where(dif==np.min(dif))        
+        dif=np.abs(velocities_plot-kp_val)
+        loc=np.where(dif==np.min(dif))
+        
+        #print(loc)
         
         #print(loc)
         #print(plotvals[loc])
+        #print(plotvals.shape)
         if negsig:
             plotvals=plotvals*-1
         m0=np.min(plotvals[loc])
@@ -906,6 +963,55 @@ class CCFMatrix():
             plt.show() 
         plt.close()
         
+    def bin_lightcurve(self,wl_lims,time_bin=5,wlunits='$\mathrm{\AA}$',ht=0):
+        '''time bins has to be an integer for now'''
+
+        
+        #wls,wls0=bin_wavelengths(self.wls,wl_lims,binned,wlunits)
+        
+        fig,axarr=plt.subplots(figsize=(16,5))
+
+        locwl=((self.wls<=(wl_lims[1]))&(self.wls>=(wl_lims[0])))
+        
+        self.lightcurve_binned_in_wl=np.average(self.lightcurve_unbinned[:,locwl],axis=1)
+        
+        t_bins0=len(self.phases)
+        
+        left_over_phases =t_bins0 % time_bin
+        
+        rem_ph=left_over_phases/2.
+        phases_cut=self.phases[int(np.floor(rem_ph)):-int(np.ceil(rem_ph))]
+        self.lightcurve_binned_cut=self.lightcurve_binned_in_wl[int(np.floor(rem_ph)):-int(np.ceil(rem_ph))]#
+        t_bins1=len(phases_cut)
+        t_bins=int(t_bins1/time_bin)
+        print(t_bins0,t_bins1,time_bin,t_bins)
+        #print(t_bins)
+        
+        
+        phases=[]
+        self.lightcurve_binned=[]
+        for t in range(int(t_bins)):
+            phases.append(np.average(phases_cut[t*time_bin:(t+1)*time_bin]))
+            self.lightcurve_binned.append(np.average(self.lightcurve_binned_cut[t*time_bin:(t+1)*time_bin]))
+        
+        
+        
+        #interpolated_phases=1
+        #dp=[self.phases[i+1]-self.phases[i] for i in range(len(self.phases)-1)]
+        #axarr.scatter(self.phases[:-1],dp)
+        axarr.scatter(self.phases,self.lightcurve_binned_in_wl,s=10,alpha=.4)
+        axarr.scatter(phases,self.lightcurve_binned,s=80)
+        axarr.set_xlabel('phase')
+        axarr.set_ylabel('flux')
+        if ht!=0:
+            axarr.vlines(-ht,np.min(self.lightcurve_binned_in_wl)*1.1,np.max(self.lightcurve_binned_in_wl)*1.1,color='green')
+            axarr.vlines(ht,np.min(self.lightcurve_binned_in_wl)*1.1,np.max(self.lightcurve_binned_in_wl)*1.1,color='green')
+            axarr.set_ylim(np.min(self.lightcurve_binned_in_wl)*1.1,np.max(self.lightcurve_binned_in_wl)*1.1)
+        
+
+            
+
+          
         
         #plt.close()            
 

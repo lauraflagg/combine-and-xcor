@@ -315,8 +315,8 @@ class CCFMatrix():
             self.writefile()
         self.allccs.append(self.ccarr)
     def createcoadd(self, spectrumset,orbitalpars,indstart=0,indend=-1,day0=2453367.8,write=True,code='vcurve',orders=[],douncs=False):
-        if douncs and self.method!='mean' and self.method!='average':
-            print('if doing uncertanties, method must be mean/average')
+        if douncs and self.method!='weighted mean' and self.method!='weighted average' and self.method!='mean' and self.method!='average' and self.method!='weighted_mean' and self.method!='weighted_average':
+            print('if doing uncertanties, method must be weighted mean/average')
             print('your method is:',self.method)
             return
         if orders!=[]:
@@ -359,6 +359,7 @@ class CCFMatrix():
     
 
             specsarr=np.array(specs)
+            uncsarr=np.array(uncs)
             self.lightcurve_unbinned=specsarr
     
             #trying something diff
@@ -371,18 +372,22 @@ class CCFMatrix():
 
                 medspec=np.median(specsarr[indstart:indend],0)
             elif self.method=='mean' or self.method=='average':
-                if douncs:
+                medspec=np.mean(specsarr[indstart:indend],0)
+                if self.douncs:
+                    uncspec=np.sqrt(np.sum(uncsarr[indstart:indend]**2,axis=0))/uncsarr[indstart:indend].shape[0]
+                    
+            elif self.method=='weighted mean' or self.method=='weighted average' or self.method=='weighted_mean' or self.method=='weighted_average':
+                '''only works if there are uncertainties'''
                     #goodlocs=((specs
-                    arrtemp=unumpy.uarray(specs,uncs)
-                    medspec_wu=arrtemp.mean(axis=0)
-                    medspec=unumpy.nominal_values(medspec_wu)
-                    uncspec=unumpy.std_devs(medspec_wu)
-                else:
-                    medspec=np.mean(specsarr[indstart:indend],0)
+                    #arrtemp=unumpy.uarray(specs,uncs)
+                weights=1./uncsarr[indstart:indend]**2
+                medspec=np.average(specsarr[indstart:indend],0,weights=weights)
+                uncspec=np.sqrt(1/np.sum(weights,axis=0))
 
-            elif self.method=='weighted':
+
+            elif self.method=='weighted' or self.method=='s2n_weighted':
                 print('s2ns=',s2narr)
-                medspec=np.average(specsarr[indstart:indend],0,weights=s2narr[0:])
+                medspec=np.average(specsarr[indstart:indend],0,weights=s2narr[indstart:indend])
             else:
                 medspec=stats.trim_mean(specsarr[indstart:indend], self.trim/100., axis=0)
 
@@ -749,10 +754,17 @@ class CCFMatrix():
         
         
         if self.douncs:
-            arrtemp0=unumpy.uarray(fluxes,uncs)
-            arrtemp=arrtemp0.sum(axis=0)
-            coadded_flux=unumpy.nominal_values(arrtemp)
-            coadded_uncs=unumpy.std_devs(arrtemp)
+            if self.method=='weighted mean' or self.method=='weighted average' or self.method=='weighted_mean' or self.method=='weighted_average':
+                '''only works if there are uncertainties'''
+                    #goodlocs=((specs
+                    #arrtemp=unumpy.uarray(specs,uncs)
+                weights=1./uncs**2
+                coadded_flux=np.average(fluxes,0,weights=weights)
+                coadded_uncs=np.sqrt(1/np.sum(weights,axis=0))            
+                
+            else:
+                coadded_flux=np.nanmean(fluxes,axis=0)
+                coadded_uncs=np.sqrt(np.nansum(uncs**2,axis=0))/np.count_nonzero(~np.isnan(fluxes),axis=0)
             
         else:
             coadded_flux=np.sum(fluxes,axis=0)

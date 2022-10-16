@@ -152,9 +152,10 @@ def convert_GRACES(per,day0,td_days,filestart='graces',fileend='.npz',sigcut=Non
     
 
     fl_out=np.zeros((ndates,len(wls)))
+    u_out=np.zeros((ndates,len(wls)))
     
     for i in range(ndates): #for all frames
-        fl_out[i,:],u_out=coadd_echelle(dats_w[:,i,:],dats_fl[:,i,:],dats_u[:,i,:],wls_a)
+        fl_out[i,:],u_out[i,:]=coadd_echelle(dats_w[:,i,:],dats_fl[:,i,:],dats_u[:,i,:],wls_a)
         #print(dats_w[i,:,:].shape)
    #     f0=spectres.spectres(wls_a,dats_w[i,0,:],dats_fl[i,:,:],fill=0,verbose=False)
    #     fl_out[np.where(f0!=0)]=f0[np.where(f0!=0)]

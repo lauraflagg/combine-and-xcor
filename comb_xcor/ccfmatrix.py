@@ -722,7 +722,7 @@ class CCFMatrix():
         axarr.set_xlabel(r'wavelength ('+wlunits+')',fontsize=16)
         ax2.set_xlabel(r'velocity (km/s)',fontsize=16)
 
-        axarr.set_ylabel(r'coadd',fontsize=16)
+        axarr.set_ylabel(r'$\mathcal{F}_{in}$/$\mathcal{F}_{out}$ - 1',fontsize=16)
         axarr.set_xlim(wl0-dw,wl0+dw)
         axarr.set_ylim(np.min(plotvals)*1.1,np.max(plotvals)*1.1)
 
@@ -773,8 +773,13 @@ class CCFMatrix():
             if self.douncs:
                 plt.errorbar(vels,coadded_flux,yerr=coadded_uncs)
             plt.xlabel('velocity (km/s)')
-            plt.ylabel('flux')
+            plt.ylabel(r'$\mathcal{F}_{in}$/$\mathcal{F}_{out}$ - 1')
+            if rv_line!=None:
+                plt.vlines(rv_line,ymin=np.min(coadded_flux)*1.2,ymax=np.max(coadded_flux)*1.2,color=lcolor,linestyle='--',alpha=lalpha)
+            plt.ylim(np.min(coadded_flux)*1.2,np.max(coadded_flux)*1.2)
             plt.show()
+            
+            
         if printsd:
             print(np.std(coadded_flux,ddof=1))
         if self.douncs:
@@ -805,22 +810,26 @@ class CCFMatrix():
         ccarr_plot=temp2[:,yesrv[0]]
         rvs_plot=self.rvs[yesrv]
         velocities_plot=self.velocities[yesvel]
-        
+        #print(rvs_plot,velocities_plot)
         
         #remove mask region from stats
         if block!=[]:
+            #print(block[0][0],block[0][1])
             newarrl=[]
             i=0
             while i<len(rvs_plot):
                 j=0
                 while j<len(velocities_plot):
+                    #print(rvs_plot[i],velocities_plot[j])
                     #print rv0[i], vel0[j]
-                    if (rvs_plot[i]<block[0][0] or rvs_plot[i] > block[0][1]) and (velocities_plot[j]<block[1][0] or velocities_plot[j]>block[1][1]):
+                    if (rvs_plot[i]<block[0][0] or rvs_plot[i] > block[0][1]) or (velocities_plot[j]<block[1][0] or velocities_plot[j]>block[1][1]):
+                        #print(10)
                         newarrl.append(ccarr_plot[j,i])
                     j=j+1
                 i=i+1        
             
             newarr=np.array(newarrl)
+            print(newarr.shape)
             #newarr=newarr.flatten()
             sd=np.std(newarr,ddof=1)
             avg=np.mean(newarr)
@@ -841,18 +850,18 @@ class CCFMatrix():
         return plotvals,rvs_plot,velocities_plot
 
 
-    def plotccf_sig(self,kp_lim=100,neg_kp=False,rv_lim=None,block=[],tonorm=True,levels=10,cm='mine',fs=16,rv_line=None,kp_line=None,negsig=False,showplot=True,lcolor='gray',lalpha=0.5):
+    def plotccf_sig(self,kp_lim=100,neg_kp=False,rv_lim=None,block=[],tonorm=True,levels=10,cm='mine',fs=16,rv_line=None,kp_line=None,negsig=False,showplot=True,lcolor='gray',lalpha=0.5,figsize=(16,5)):
         #fs is fontsize
         #block is 2x2 arr
         #block=[[xmin,xmax],[ymin,ymax]] for blocked region
         #good choices for cm -- 'mine', 'ocean', or 'tab20' with 20 levels
         plotvals,rvs_plot,velocities_plot=self._createsigmatrixdata_(kp_lim=kp_lim,neg_kp=neg_kp,rv_lim=rv_lim,block=block,tonorm=tonorm,negsig=negsig)
-
+        
         if cm=='mine':
             C=[[140,70,0],[170,70,10],[200,60,20],[240,60,20],[255,60,20],[255,110,60],[255,140,80],[255,160,120],[255,180,160],[255,255,255]]               
             cm = mpl.ListedColormap(np.array(C)/255.0)
         print(np.max(plotvals))    
-        fig=plt.figure(figsize=(16,5))
+        fig=plt.figure(figsize=figsize)
         axarr = fig.add_subplot(1,1,1)
         x=axarr.contourf(np.round(rvs_plot,1),velocities_plot,plotvals,levels,cmap=cm)
         if rv_line!=None:
@@ -906,9 +915,10 @@ class CCFMatrix():
         rvs_plot=self.rvs[yesrv]
         velocities_plot=np.array(self.velocities[yesvel])
         
-        
+        print(block)
         #remove mask region from stats
         if block!=[]:
+            print('block')
             newarrl=[]
             i=0
             while i<len(rvs_plot):
@@ -920,6 +930,7 @@ class CCFMatrix():
                     j=j+1
                 i=i+1        
             
+            print(newarrl.shape)
             newarr=np.array(newarrl)
             #newarr=newarr.flatten()
             sd=np.std(newarr,ddof=1)
@@ -1019,7 +1030,7 @@ class CCFMatrix():
             axarr.vlines(-ht,np.min(self.lightcurve_binned_in_wl)*1.1,np.max(self.lightcurve_binned_in_wl)*1.1,color='green')
             axarr.vlines(ht,np.min(self.lightcurve_binned_in_wl)*1.1,np.max(self.lightcurve_binned_in_wl)*1.1,color='green')
             axarr.set_ylim(np.min(self.lightcurve_binned_in_wl)*1.1,np.max(self.lightcurve_binned_in_wl)*1.1)
-        
+        return phases,self.lightcurve_binned
 
             
 

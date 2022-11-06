@@ -20,6 +20,7 @@ from matplotlib import patches
 import matplotlib.colors as mpl
 from lmfit import Model
 from scipy.signal import butter, sosfilt, sosfreqz, ellip, sosfiltfilt, filtfilt, freqz
+import batman
 #from lmfit.lineshapes import gaussian2d
 #from lmfit.models import Gaussian2dModel
 
@@ -167,7 +168,29 @@ class SpectrumSet:
         
 
         if badphases!=[]:
+            if badphases[0]=='oot':
+                #calculate batman transit light curve
+                 
+                params1 = batman.TransitParams()       #object to store transit parameters
+                params1.t0 = day0                        #time of inferior conjunction
+                params1.per = per                       #orbital period
+                params1.rp = 0.1                       #planet radius (in units of stellar radii)
+                params1.a =  a_Rs                        #semi-major axis (in units of stellar radii)
+                params1.inc = inclination                      #orbital inclination (in degrees)
+                params1.ecc = e                       #eccentricity
+                if e>0.01:
+                    params1.w = (radvel_planet_pars[3]-np.pi)*360/(2*np.pi) 
+                else: params1.w =90 #longitude of periastron (in degrees)
+                params1.limb_dark = "nonlinear"        #limb darkening model
+                params1.u = [0.5, 0.1, 0.1, -0.1]      #limb darkening coefficients [u1, u2, u3, u4]
+                
+                  #times at which to calculate light curve
+                m1 = batman.TransitModel(params1, hjdall)    #initializes model
+                flux1 = m1.light_curve(params1)    
+                
+                
             i=0
+            
             
             while i<len(self.dates):
                 ba=False
@@ -177,8 +200,12 @@ class SpectrumSet:
                 pha=((hjdall[i]-day0)/period) % 1.0 
 
                     
- 
-                if badphases[4](badphases[0](pha,badphases[1]), badphases[2](pha,badphases[3])):    
+                if badphases[0]=='oot':
+                    if flux1[i]==0:
+                        bad_dates.append(str(int(self.dates[i])))
+                        bad_dates.append(str(float(self.dates[i])))
+                        ba=True                    
+                elif badphases[4](badphases[0](pha,badphases[1]), badphases[2](pha,badphases[3])):    
                     bad_dates.append(str(int(self.dates[i])))
                     bad_dates.append(str(float(self.dates[i])))
                     ba=True
@@ -431,6 +458,17 @@ class SpectrumSet:
         if hasattr(self,'gooduncs'):
             self.gooduncs[:,loc]=np.nan
         self.gooddata=np.ma.masked_equal(self.gooddata,0)
+    
+    def combinesets(self,otherset):
+        self.hjd=np.concatenate((self.hjd,otherset.hjd))
+        newspecs=np.array([spectres.spectres(self.wls,otherset.wls,item,fill=0,verbose=False)
+                           for item in otherset.gooddata])
+        print('old shapes:',self.gooddata.shape,otherset.gooddata.shape)
+        self.gooddata=np.concatenate((self.gooddata,newspecs))
+        print('old shapes:',self.gooddata.shape)
+        
+            
+            
         
 
     

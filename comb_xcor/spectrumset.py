@@ -355,12 +355,14 @@ class SpectrumSet:
         return s2narr
                 
     
-    def filtertemplate(self,flip=False,butter_freq=False,butter_order=5,resample=1):
+    def filtertemplate(self,flip=False,butter_freq=False,butter_order=5,resample=1,scale=1):
         '''resample is the ratio between the old resolution and the new resolution'''
+        self.fl_co=scale*self.fl_co
         if flip:
             self.fl_co=-self.fl_co
         if butter_freq!=False:
             self.fl_co=ButterFilter_quiet(self.fl_co,butter_freq,order=butter_order)
+            
 
                 
     def fourierfilter(self,dlam=[1e-5,1e-4],wlrange=[0,1e7],plot=True,filternow=False):

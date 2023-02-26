@@ -117,7 +117,7 @@ class SpectrumSet:
 
     def __init__(self,filename,folder,bad_dates=None,maskfile=None,template_fn='template_width0p2_CO.csv',subset='',badphases=[],
                  period=8.9891, scale=1.,day0=2453367.805,template_wl_unit=None,spectrum_wl_unit=None,wllims=[0.0,1e20],
-                 subtractone=True,transit_midpoint=None,tp=None,printphases=False,oddeven='both',byorder=False):
+                 subtractone=True,transit_midpoint=None,tp=None,orbital_pars={},printphases=False,oddeven='both',byorder=False):
         #only need to worry abot day0, period if badphases!=[]
         #subbtractone added to deal with transmission spectra
         self.byorder=byorder
@@ -173,20 +173,21 @@ class SpectrumSet:
                  
                 params1 = batman.TransitParams()       #object to store transit parameters
                 params1.t0 = day0                        #time of inferior conjunction
-                params1.per = per                       #orbital period
-                params1.rp = 0.1                       #planet radius (in units of stellar radii)
-                params1.a =  a_Rs                        #semi-major axis (in units of stellar radii)
-                params1.inc = inclination                      #orbital inclination (in degrees)
-                params1.ecc = e                       #eccentricity
-                if e>0.01:
-                    params1.w = (radvel_planet_pars[3]-np.pi)*360/(2*np.pi) 
+                params1.per = period                      #orbital period
+                params1.rp = orbital_pars['rprs']                       #planet radius (in units of stellar radii)
+                params1.a =  orbital_pars['a_Rs']                      #semi-major axis (in units of stellar radii)
+                params1.inc = orbital_pars['inclination']                      #orbital inclination (in degrees)
+                params1.ecc = orbital_pars['e']                       #eccentricity
+                if orbital_pars['e'] >0.01:
+                    params1.w = orbital_pars['om'] #in degrees
                 else: params1.w =90 #longitude of periastron (in degrees)
                 params1.limb_dark = "nonlinear"        #limb darkening model
                 params1.u = [0.5, 0.1, 0.1, -0.1]      #limb darkening coefficients [u1, u2, u3, u4]
                 
                   #times at which to calculate light curve
                 m1 = batman.TransitModel(params1, hjdall)    #initializes model
-                flux1 = m1.light_curve(params1)    
+                flux1 = m1.light_curve(params1)
+                self.transit_model=flux1
                 
                 
             i=0
@@ -201,7 +202,10 @@ class SpectrumSet:
 
                     
                 if badphases[0]=='oot':
-                    if flux1[i]==0:
+                    if i==0:
+                        print('using batman to calculate oot phases')
+                        print(flux1)
+                    if flux1[i]==1:
                         bad_dates.append(str(int(self.dates[i])))
                         bad_dates.append(str(float(self.dates[i])))
                         ba=True                    

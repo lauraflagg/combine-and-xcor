@@ -128,6 +128,9 @@ class CCFMatrix():
         self.init_data=False
         self.trim=trim
     
+
+        
+    
     def _addspecdata_(self,spectrumset,orbitalpars,day0,code):
         self.phases=spectrumset.phases
         self.init_data=True
@@ -146,6 +149,9 @@ class CCFMatrix():
             pars2use=np.zeros(3)
             pars2use[2]=maxkp
             pars2use[0:2]=orbitalpars[0:2]
+        elif code=='radvel':
+            pars2use=orbitalpars.copy()
+            pars2use[-1]=maxkp
         else:
             #print(orbitalpars)
             pars2use=orbitalpars.copy()
@@ -575,7 +581,7 @@ class CCFMatrix():
         plt.close()
         return fig,axarr        
             
-    def findcenter(self,xguess,yguess,xlims=None,ylims=None,xcenlims=None,ycenlims=None,negamp=False):
+    def findcenter(self,xguess,yguess,xlims=None,ylims=None,xcenlims=None,ycenlims=None,negamp=False,xwidguess=1,ywidguess=20,printfit=True):
         '''def findcenter(self,xguess,yguess,xlims=None,ylims=None,xcenlims=None,ycenlims=None,negamp=False)'''
         if xlims!=None:
             yesrv=np.where((self.rvs<=xlims[1]) & (self.rvs>=xlims[0]))
@@ -608,13 +614,15 @@ class CCFMatrix():
             params['amp'].set(np.min(ccarr_plot),max=0)
         else:
             params['amp'].set(np.max(ccarr_plot),min=0)
-        params['xwid'].set(1,min=0)
-        params['ywid'].set(2,min=0)
+        params['xwid'].set(xwidguess,min=0)
+        params['ywid'].set(ywidguess,min=0)
         
         #print(params)
         result = mod.fit(ccarr_plot, x=rvs_plot, y=velocities_plot, xcen=params['xcen'],ycen=params['ycen'],bas=0,amp=params['amp'],xwid=params['xwid'],ywid=params['ywid'])
         #print(result.fit_report())
-        print(result.best_values)
+        if printfit:
+            print(result.best_values)
+            print(result.fit_report())
         return result.best_values['xcen'],result.best_values['ycen']
     
     def plotccf(self,levels=10,cm='ocean',rv_line=None,kp_line=None,showplot=True,lcolor='gray',lalpha=0.5):

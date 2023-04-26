@@ -67,7 +67,7 @@ class SpectrumSet:
             else:
                 self.uncs=dat['uncs']
             #print(self.uncs.shape,self.data.shape)
-        
+
         elif self.filename[-3:]=='pic':
             ob = open(self.loc, "rb")
             d,dat0=pickle.load(ob)
@@ -84,7 +84,7 @@ class SpectrumSet:
             #fluxes=np.loadtxt(filename,delimiter=',',skiprows=1)
             data1=np.transpose(np.array(fluxes[1:]))
             self.data=data1[1:,:].astype(np.float)
-            
+
             wls=data1[:][0]
             self.uncs=np.zeros_like(self.data)
         self.wls=wls.astype(np.float)     
@@ -103,17 +103,39 @@ class SpectrumSet:
             data_df=np.transpose(df.values)
             wl=data_df[0]
             fl=data_df[1]
-            
+
         if self.template_wl_unit!=None:
             self.template_wl_unit=astro_lf.find_unit(template_wl_unit)
         else:
             self.template_wl_unit=astro_lf.guess_unit(wl.flatten()[0])
-        
+
         conversion_fac=astro_lf.wl_unit_choices[self.template_wl_unit].conversion/astro_lf.wl_unit_choices[self.spectrum_wl_unit].conversion
         wl_co_temp_0=wl*conversion_fac
 
         return wl_co_temp_0,fl
-    
+
+    def set_batman_transit(self,orbital_pars):
+        params1 = batman.TransitParams()       #object to store transit parameters
+        params1.t0 = self.day0                        #time of inferior conjunction
+        params1.per = self.period                      #orbital period
+        params1.rp = orbital_pars['rprs']                       #planet radius (in units of stellar radii)
+        params1.a =  orbital_pars['a_Rs']                      #semi-major axis (in units of stellar radii)
+        params1.inc = orbital_pars['inclination']                      #orbital inclination (in degrees)
+        params1.ecc = orbital_pars['e']                       #eccentricity
+        if orbital_pars['e'] >0.01:
+            params1.w = orbital_pars['om'] #in degrees
+        else: params1.w =90 #longitude of periastron (in degrees)
+        params1.limb_dark = "linear"        #limb darkening model
+        params1.u = [0.0]      #limb darkening coefficients [u1, u2, u3, u4]
+
+            #times at which to calculate light curve
+        m1 = batman.TransitModel(params1, self.hjdall)    #initializes model
+        flux1 = m1.light_curve(params1)
+        self.params=params1
+        self.transit_model=flux1
+
+        return params1,flux1
+
 
     def __init__(self,filename,folder,bad_dates=None,maskfile=None,template_fn='template_width0p2_CO.csv',subset='',badphases=[],
                  period=8.9891, scale=1.,day0=2453367.805,template_wl_unit=None,spectrum_wl_unit=None,wllims=[0.0,1e20],
@@ -138,7 +160,7 @@ class SpectrumSet:
         self.template_wl_unit=template_wl_unit
         self.wllims=wllims
         self._read_flux_()
-        
+
         if tp==None:
             self.tp=day0
         else:
@@ -147,15 +169,15 @@ class SpectrumSet:
             self.transit_midpoint=day0
         else:
             self.transit_midpoint=transit_midpoint
-        
-        
 
-            
+
+
+
         if spectrum_wl_unit!=None:
             self.spectrum_wl_unit=astro_lf.find_unit(spectrum_wl_unit)
         else:
             self.spectrum_wl_unit=astro_lf.guess_unit(self.wls.flatten()[0])
-        
+
 
         if bad_dates==None:
             hjdall=self.dates
@@ -164,51 +186,37 @@ class SpectrumSet:
             temp = pd.read_csv(folder+'hhjd'+subset+'.csv')
             temp2=np.transpose(temp.values)
             hjdall=temp2[1]
-        
-        
+
+        self.hjdall=hjdall
+
 
         if badphases!=[]:
             if badphases[0]=='oot':
                 #calculate batman transit light curve
-                 
-                params1 = batman.TransitParams()       #object to store transit parameters
-                params1.t0 = day0                        #time of inferior conjunction
-                params1.per = period                      #orbital period
-                params1.rp = orbital_pars['rprs']                       #planet radius (in units of stellar radii)
-                params1.a =  orbital_pars['a_Rs']                      #semi-major axis (in units of stellar radii)
-                params1.inc = orbital_pars['inclination']                      #orbital inclination (in degrees)
-                params1.ecc = orbital_pars['e']                       #eccentricity
-                if orbital_pars['e'] >0.01:
-                    params1.w = orbital_pars['om'] #in degrees
-                else: params1.w =90 #longitude of periastron (in degrees)
-                params1.limb_dark = "nonlinear"        #limb darkening model
-                params1.u = [0.5, 0.1, 0.1, -0.1]      #limb darkening coefficients [u1, u2, u3, u4]
-                
-                  #times at which to calculate light curve
-                m1 = batman.TransitModel(params1, hjdall)    #initializes model
-                flux1 = m1.light_curve(params1)
-                self.transit_model=flux1
-                
-                
+                self.set_batman_transit(orbital_pars)
+
             i=0
-            
-            
             while i<len(self.dates):
                 ba=False
                 logging.debug('day: ',hjdall[i])
-   
+
 
                 pha=((hjdall[i]-day0)/period) % 1.0 
 
-                    
+
                 if badphases[0]=='oot':
                     if i==0:
                         print('using batman to calculate oot phases')
-                        print(flux1)
-                    if flux1[i]==1:
+                        print(self.transit_model)
+                    if self.transit_model[i]==1:
                         bad_dates.append(str(int(self.dates[i])))
-                        bad_dates.append(str(float(self.dates[i])))
-                        ba=True                    
+                        bad_dates.append(str(float(self.dates[i])))                        
+                        ba=True
+                    elif len(badphases)>1:
+                        if self.transit_model[i]>np.min(self.transit_model*1.0001) and badphases[1]=='t23':
+                            bad_dates.append(str(int(self.dates[i])))
+                            bad_dates.append(str(float(self.dates[i])))                        
+                            ba=True                        
                 elif badphases[4](badphases[0](pha,badphases[1]), badphases[2](pha,badphases[3])):    
                     bad_dates.append(str(int(self.dates[i])))
                     bad_dates.append(str(float(self.dates[i])))
@@ -222,7 +230,7 @@ class SpectrumSet:
                     print(hjdall[i],pha,'bad? ',ba)
 
                 i=i+1  
-                
+
         if self.oddeven!='both':
             ivals=np.arange(len(hjdall))
             if self.oddeven=='odd':
@@ -233,7 +241,7 @@ class SpectrumSet:
 
                 bad_dates.append(str(item))
                 bad_dates.append(float(item))
-                
+
 
 
 
@@ -293,12 +301,12 @@ class SpectrumSet:
         #read in template file
 
         wl_co_temp_0, fl_co_temp=self._read_template_()
-        
+
         ccarr=[]
         cc2arr=[]
         sigarr=[]
         sig2arr=[] 
-        
+
         logging.debug('wl_template:',wl_co_temp_0[0:10],wl_co_temp_0[-10:])
         logging.debug('wls:',self.wls[0:10],self.wls[-10:])
         if self.byorder:
@@ -309,12 +317,12 @@ class SpectrumSet:
                 else:
                     fl_co[o]=spectres.spectres(o_w, wl_co_temp_0, fl_co_temp,verbose=False)
         else:
-        
+
             if subtractone:
                 fl_co=spectres.spectres(self.wls, wl_co_temp_0, fl_co_temp,verbose=False,fill=1.)-1.0
             else:
                 fl_co=spectres.spectres(self.wls, wl_co_temp_0, fl_co_temp,verbose=False)
-        
+
         if self.byorder:
             fl_co[badwls_mask==1]=0
         else:
@@ -322,13 +330,13 @@ class SpectrumSet:
         fl_co=fl_co*scale
 
         plot=1
-        
+
 
         self.hjd=hjd
         self.badwls=badwls
         self.fl_co=np.ma.masked_equal(fl_co,0)
         #self.fl_co=self.fl_co[wllimlocs]
-        
+
         self.gooddata=np.ma.masked_equal(gooddat,0)
         self.gooddata=self.gooddata[:,wllimlocs]
         self.gooduncs=gooduncs[:,wllimlocs]
@@ -338,14 +346,14 @@ class SpectrumSet:
         self.badwls_mask=badwls_mask#[wllimlocs]
         #self.badwls=self.badwls[wllimlocs]
         #good data
-        
+
     def calculate_s2ns(self,wllims=(.3,2.316)):
         s2ns=[]
         i=0
         for flux in self.gooddata:
 
             fors2n=((self.wls >wllims[0]) & (self.wls <wllims[1]))        
-     
+
             #select a region that hass generally been corrected well for tellurics
 
             s2ntem=findbests2n(flux[fors2n]+1,edge=5,p=95)
@@ -357,8 +365,8 @@ class SpectrumSet:
         s2narr=np.array(s2ns)
         self.s2narr=s2narr
         return s2narr
-                
-    
+
+
     def filtertemplate(self,flip=False,butter_freq=False,butter_order=5,resample=1,scale=1):
         '''resample is the ratio between the old resolution and the new resolution'''
         self.fl_co=scale*self.fl_co
@@ -366,9 +374,9 @@ class SpectrumSet:
             self.fl_co=-self.fl_co
         if butter_freq!=False:
             self.fl_co=ButterFilter_quiet(self.fl_co,butter_freq,order=butter_order)
-            
 
-                
+
+
     def fourierfilter(self,dlam=[1e-5,1e-4],wlrange=[0,1e7],plot=True,filternow=False):
         loc=(self.wls<wlrange[1]) & (self.wls>wlrange[0])
         maxlocs=[]
@@ -382,7 +390,7 @@ class SpectrumSet:
             wls=self.wls
         for item in self.gooddata:
             #freqs=1./np.linspace(dlam[0],dlam[1],1000)
-            
+
             freqs, power = LombScargle(wls[loc], item[loc]).autopower(minimum_frequency=1./dlam[1],maximum_frequency=1./dlam[0],samples_per_peak=10)
             maxloc= power==max(power)
             maxlocs.append(1./freqs[maxloc])
@@ -393,7 +401,7 @@ class SpectrumSet:
                 #plt.title('max at wl='+str(round(1./freqs[maxloc]*1e4,2))+' AA') 
 
                 plt.subplot(3,1,2)
-    
+
                 plt.plot(wls,item)
 
         if plot:
@@ -421,17 +429,17 @@ class SpectrumSet:
         fig=plt.figure(figsize=(8,5))
         axarr = fig.add_subplot(1,1,1)        
         x=axarr.plot(wlplot,datplot)
-      
-        
+
+
         axarr.set_ylabel('flux')
         axarr.set_xlabel('wavelength (microns)')
-    
+
 
     def plotspecs(self,wlrange=None,orbitalpars=None,centwl=None,code='vcurve',vsys=0,lcolor='white',nontransitingphases=False):
-        
+
         if nontransitingphases:
             self.phases[self.phases<0]=self.phases[self.phases<0]+1
-        
+
         if wlrange!=None:
             loc=((self.wls>=wlrange[0]) & (self.wls<=wlrange[1]))
             wlplot=self.wls[loc]
@@ -442,20 +450,20 @@ class SpectrumSet:
         fig=plt.figure(figsize=(8,5))
         axarr = fig.add_subplot(1,1,1)        
         x=axarr.contourf(wlplot,self.phases,datplot)
-        
+
         if centwl!=None:
             rvshifts=np.array([planetrvshift(date,orbitalpars,day0=self.day0,code=code)+vsys for date in self.hjd]) #NO CLUE if this is correct, signs are confusing
             wlline=astro_lf.veltodeltawl(rvshifts,centwl)+centwl
 
             axarr.plot(wlline,self.phases,color=lcolor,lw=2,zorder=40)
-        
-        
+
+
         axarr.set_ylabel('phase')
         axarr.set_xlabel('wavelength (microns)')
         temp=fig.colorbar(x)
-        
+
         temp.ax.set_ylabel(r'relative flux')
-        
+
     def maskwavelengths(self,wlcent,wlwid):
         '''wlcent, wlwid in microns'''
         loc=((self.wls<=(wlcent+wlwid)) & (self.wls>=(wlcent-wlwid)))
@@ -464,7 +472,7 @@ class SpectrumSet:
         if hasattr(self,'gooduncs'):
             self.gooduncs[:,loc]=np.nan
         self.gooddata=np.ma.masked_equal(self.gooddata,0)
-    
+
     def combinesets(self,otherset):
         self.hjd=np.concatenate((self.hjd,otherset.hjd))
         newspecs=np.array([spectres.spectres(self.wls,otherset.wls,item,fill=0,verbose=False)
@@ -472,12 +480,12 @@ class SpectrumSet:
         print('old shapes:',self.gooddata.shape,otherset.gooddata.shape)
         self.gooddata=np.concatenate((self.gooddata,newspecs))
         print('old shapes:',self.gooddata.shape)
-        
-            
-            
-        
 
-    
+
+
+
+
+
     def system_properties(self, k_s,M_star,M_planet=.0001):
         '''M_star is stellar mass in solar masses
         k_s is stellar velocity amplitude in km/s
@@ -487,7 +495,7 @@ class SpectrumSet:
         self.M_cgs=M_star*Ms
         self.M_planet=M_planet
         self.M_planet_cgs=M_planet*Mj
-        
+
     def printorders(self):
         if self.byorder:
             for o,w in enumerate(self.wls):

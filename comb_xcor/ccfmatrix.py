@@ -625,8 +625,8 @@ class CCFMatrix():
             print(result.fit_report())
         return result.best_values['xcen'],result.best_values['ycen']
     
-    def plotccf(self,levels=10,cm='ocean',rv_line=None,kp_line=None,showplot=True,lcolor='gray',lalpha=0.5):
-        fig=plt.figure(figsize=(16,5))
+    def plotccf(self,levels=10,cm='ocean',rv_line=None,kp_line=None,showplot=True,lcolor='gray',lalpha=0.5,figsize=(16,5)):
+        fig=plt.figure(figsize=figsize)
         axarr = fig.add_subplot(1,1,1)       
         x=axarr.contourf(np.round(self.rvs,1),self.velocities,self.ccarr,levels,cmap=cm)
         if rv_line!=None:
